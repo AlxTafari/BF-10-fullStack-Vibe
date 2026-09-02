@@ -5,3 +5,5 @@ node_modules
 dist
 .vercel
 *.log
+QA.md
+LOG.md
