@@ -32,6 +32,9 @@ export const NO_CODE_FOUND = [
 export const PROVIDER_UNAVAILABLE =
   "Источник курсов сейчас недоступен, попробуй позже.";
 
+export const POPULAR_RATES_EMPTY =
+  "Источник ответил, но в снимке нет ни одной из популярных валют. Странно — попробуй позже.";
+
 export const USD_IS_BASE =
   "USD — это база отсчёта. Назови другую валюту или пару, например EUR или USD EUR.";
 
@@ -74,8 +77,10 @@ export function formatConversion(c: Conversion): string {
 }
 
 export function formatPopularRates(p: PopularRates): string {
+  // Снимок пришёл (иначе use case бросил бы ошибку и мы бы сюда не дошли),
+  // но ни одной популярной валюты в нём нет — это не «источник недоступен».
   if (p.rates.length === 0) {
-    return PROVIDER_UNAVAILABLE;
+    return POPULAR_RATES_EMPTY;
   }
   const rows = p.rates.map(
     (r) => `${currencyFlag(r.code)} 1 USD = ${fmt(r.perUsd)} ${r.code}`,

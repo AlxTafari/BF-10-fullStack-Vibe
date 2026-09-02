@@ -46,6 +46,24 @@ describe("parseCurrencyQuery", () => {
     expect(parseCurrencyQuery("10.5 usd").amount).toBe(10.5);
   });
 
+  it("разделители разрядов: пробел, запятая, точка — все = 1000", () => {
+    expect(parseCurrencyQuery("1 000 usd").amount).toBe(1000);
+    expect(parseCurrencyQuery("1,000 usd").amount).toBe(1000);
+    expect(parseCurrencyQuery("1.000 usd").amount).toBe(1000);
+  });
+
+  it("разряды + дробь вместе", () => {
+    expect(parseCurrencyQuery("1 234,56 eur").amount).toBe(1234.56);
+    expect(parseCurrencyQuery("1.234.567 eur").amount).toBe(1234567);
+  });
+
+  it("абсурдно большую сумму игнорирует (валюту всё равно находит)", () => {
+    expect(parseCurrencyQuery("5000000000000 usd")).toEqual({
+      amount: null,
+      codes: ["USD"],
+    });
+  });
+
   it("не считает валютой обычные трёхбуквенные слова", () => {
     expect(parseCurrencyQuery("the usd for you").codes).toEqual(["USD"]);
   });

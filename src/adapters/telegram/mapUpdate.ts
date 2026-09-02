@@ -11,5 +11,9 @@ export function mapUpdate(update: TelegramUpdate): IncomingMessage | null {
   if (!message || typeof message.text !== "string") {
     return null;
   }
-  return { chatId: message.chat.id, text: message.text };
+  return {
+    chatId: message.chat.id,
+    text: message.text,
+    chatType: message.chat.type,
+  };
 }

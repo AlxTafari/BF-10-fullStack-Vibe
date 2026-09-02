@@ -3,6 +3,7 @@ import { convertCurrency } from "../src/application/useCases/convertCurrency.js"
 import { getPopularRates } from "../src/application/useCases/getPopularRates.js";
 import { getRateAgainstUsd } from "../src/application/useCases/getRateAgainstUsd.js";
 import { getRatesSource } from "../src/application/useCases/getRatesSource.js";
+import { formatPopularRates } from "../src/application/replyText.js";
 import { UnknownCurrencyError } from "../src/domain/errors.js";
 import { fakeProvider } from "./support/fakeProvider.js";
 
@@ -59,6 +60,17 @@ describe("getPopularRates", () => {
     expect(eur?.perUsd).toBeCloseTo(0.9);
     // JPY нет в POPULAR_CODES по умолчанию, RUB есть
     expect(p.rates.some((r) => r.code === "RUB")).toBe(true);
+  });
+});
+
+describe("formatPopularRates", () => {
+  it("пустой список != 'источник недоступен'", async () => {
+    // снимок валиден, но популярных валют в нём нет
+    const p = await getPopularRates(fakeProvider({ THB: 35 }));
+    expect(p.rates).toHaveLength(0);
+    const text = formatPopularRates(p);
+    expect(text).not.toContain("недоступен");
+    expect(text).toContain("нет ни одной из популярных");
   });
 });
 

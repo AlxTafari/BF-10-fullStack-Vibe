@@ -14,11 +14,16 @@ function fakeMessenger() {
   return { messenger, sent };
 }
 
-function run(text: string, deps = { provider: fakeProvider() }) {
+function run(
+  text: string,
+  deps = { provider: fakeProvider() },
+  chatType = "private",
+) {
   const { messenger, sent } = fakeMessenger();
-  return handleIncomingMessage({ chatId: 1, text }, { ...deps, messenger }).then(
-    () => sent[0]?.text ?? "",
-  );
+  return handleIncomingMessage(
+    { chatId: 1, text, chatType },
+    { ...deps, messenger },
+  ).then(() => sent[0]?.text ?? "");
 }
 
 describe("handleIncomingMessage", () => {
@@ -65,6 +70,20 @@ describe("handleIncomingMessage", () => {
     const reply = await run("RUB", { provider: fakeProvider({ EUR: 0.9 }) });
     expect(reply).toContain("нет курса для RUB");
     expect(reply).not.toContain("недоступен");
+  });
+
+  it("в группе свободный текст игнорируется", async () => {
+    expect(await run("на реал не хватает", { provider: fakeProvider() }, "group")).toBe("");
+    expect(await run("курс EUR", { provider: fakeProvider() }, "supergroup")).toBe("");
+  });
+
+  it("в группе команды работают", async () => {
+    const reply = await run(
+      "/rates@currency_bot",
+      { provider: fakeProvider() },
+      "group",
+    );
+    expect(reply).toContain("Курсы к доллару США");
   });
 
   it("ошибка провайдера -> нейтральный текст, ошибка в логе", async () => {

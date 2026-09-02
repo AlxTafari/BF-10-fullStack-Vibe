@@ -90,10 +90,14 @@ export const CURRENCIES: Readonly<Record<string, CurrencyMeta>> = {
   HRK: meta("HRK", "🇭🇷", "хорватская куна", ["куна", "куны"]),
 };
 
-/** Валюты для команды /rates (корзина популярных). */
-export const POPULAR_CODES: readonly CurrencyCode[] = (
-  ["EUR", "GBP", "CHF", "JPY", "CNY", "RUB", "UAH", "KZT", "TRY", "PLN"] as const
-).map((c) => c as CurrencyCode);
+/**
+ * Валюты для команды /rates (корзина популярных).
+ * Это литералы известных кодов; бренд CurrencyCode навешиваем одной
+ * ассерцией на весь массив (через unknown — брендовый тип иначе не принять).
+ */
+export const POPULAR_CODES = [
+  "EUR", "GBP", "CHF", "JPY", "CNY", "RUB", "UAH", "KZT", "TRY", "PLN",
+] as const as unknown as readonly CurrencyCode[];
 
 /** Множество известных кодов (для быстрой проверки). */
 export const KNOWN_CURRENCY_CODES: ReadonlySet<string> = new Set(

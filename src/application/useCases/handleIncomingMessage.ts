@@ -25,6 +25,11 @@ import { getRatesSource } from "./getRatesSource.js";
 export interface IncomingMessage {
   chatId: number;
   text: string;
+  /**
+   * Тип чата Telegram: "private" | "group" | "supergroup" | "channel".
+   * Не задан (тесты, старые вызовы) — считаем личкой.
+   */
+  chatType?: string;
 }
 
 export interface HandlerDeps {
@@ -50,6 +55,14 @@ export async function handleIncomingMessage(
 ): Promise<void> {
   const text = msg.text.trim();
   const command = parseCommand(text);
+
+  // В группах отвечаем только на явные слэш-команды. Свободный текст
+  // («на реал не хватает», «в 2024 EUR подорожал») там разбирать нельзя —
+  // бот спамил бы курсы в ответ на обычные сообщения. Личка — без ограничений.
+  const isPrivate = !msg.chatType || msg.chatType === "private";
+  if (!isPrivate && command === null) {
+    return;
+  }
 
   if (command === "start" || command === "help") {
     await deps.messenger.sendMessage(msg.chatId, HELP_TEXT);
