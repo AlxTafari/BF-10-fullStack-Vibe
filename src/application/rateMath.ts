@@ -1,5 +1,5 @@
 import type { CurrencyCode } from "../domain/currencyCode.js";
-import { RatesProviderError } from "../domain/errors.js";
+import { RateNotAvailableError } from "../domain/errors.js";
 import type { RateSnapshot } from "./ports/RatesProvider.js";
 
 /** Сколько единиц `code` за 1 единицу базовой валюты снимка. */
@@ -7,9 +7,7 @@ export function unitsPerBase(snap: RateSnapshot, code: CurrencyCode): number {
   if (code === snap.base) return 1;
   const value = snap.rates[code];
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    throw new RatesProviderError(
-      `Нет курса для ${code} у источника ${snap.providerName}`,
-    );
+    throw new RateNotAvailableError(code, snap.providerName);
   }
   return value;
 }

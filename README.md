@@ -1,7 +1,8 @@
 # Currency Converter Telegram Bot
 
-Telegram-бот: находит во входящем тексте коды валют (ISO 4217) и отвечает курсом
-относительно доллара США. Два кода — кросс-курс одной валюты к другой.
+Telegram-бот: находит во входящем тексте валюту (код ISO 4217 или название —
+«евро», «долларов», «в юанях») и отвечает курсом относительно доллара США.
+Две валюты — кросс-курс. Число перед валютой — конвертация суммы.
 
 - **Backend:** Fastify (webhook)
 - **Telegram:** голый `fetch` к Bot API, без SDK
@@ -14,8 +15,8 @@ Telegram-бот: находит во входящем тексте коды ва
 ```
 Пользователь → Telegram → POST /webhook → Fastify-адаптер
   → handleIncomingMessage (use case)
-     → extractCurrencyCodes         (разбор текста)
-     → getRateAgainstUsd | convertCurrency
+     → parseCurrencyQuery           (валюты + сумма из текста, справочник currencies)
+     → getRateAgainstUsd | convertCurrency | getPopularRates | getRatesSource
         → RatesProvider.getSnapshot (порт → OXR / Frankfurter)
      → Messenger.sendMessage        (порт → Telegram Bot API)
 ```
@@ -25,21 +26,27 @@ Telegram-бот: находит во входящем тексте коды ва
 | Ввод | Ответ |
 |------|-------|
 | `/start`, `/help` | справка |
-| один код: `EUR`, `курс jpy` | курс валюты к USD (прямой и обратный) |
-| два кода: `EUR GBP` | кросс-курс EUR→GBP и обратно |
-| кодов нет | подсказка |
+| `/rates` | курсы корзины популярных валют к USD |
+| `/source` | активный источник курсов и дата данных |
+| `EUR`, `курс евро`, `сколько стоит иена` | курс валюты к USD (прямой и обратный) |
+| `EUR GBP`, `евро в фунтах` | кросс-курс EUR↔GBP |
+| `100 EUR в USD`, `5000 рублей в юанях` | конвертация суммы |
+| `USD` | подсказка: доллар — база отсчёта |
+| валюты нет у провайдера (напр. RUB у Frankfurter) | отдельное сообщение |
+| валюта не распознана / нет валют | подсказка |
 
 ## Структура
 
 ```
 src/
-  domain/          CurrencyCode, доменные ошибки — без зависимостей
+  domain/          CurrencyCode, currencies (флаги/названия/синонимы), ошибки
   application/
     ports/         RatesProvider, Messenger (интерфейсы)
-    useCases/      handleIncomingMessage, getRateAgainstUsd, convertCurrency
-    parsing/       extractCurrencyCodes
+    useCases/      handleIncomingMessage, getRateAgainstUsd, convertCurrency,
+                   getPopularRates, getRatesSource
+    parsing/       parseCurrencyQuery (валюты + сумма)
     rateMath.ts    unitsPerBase, crossRate (чистая математика курсов)
-    replyText.ts   тексты ответов
+    replyText.ts   тексты ответов, флаги
   adapters/
     telegram/      telegramMessenger, mapUpdate, telegramTypes
     rates/         openExchangeRatesProvider, frankfurterProvider, createRatesProvider
@@ -48,7 +55,7 @@ src/
   server.ts        Fastify-приложение (buildApp)
   index.ts         локальный запуск (listen)
 api/index.ts       точка входа для Vercel (serverless)
-scripts/           setWebhook / deleteWebhook
+scripts/           setWebhook / deleteWebhook / setCommands
 test/              vitest — parsing, use cases, роутинг
 docs/               C4-диаграммы PlantUML (*.puml) + architecture.md
 ```
@@ -99,6 +106,12 @@ WEBHOOK_URL=https://<домен>/webhook npm run set-webhook
 
 Секрет из `WEBHOOK_SECRET` уходит в Telegram как `secret_token`; каждый входящий
 запрос на `/webhook` проверяется по заголовку `X-Telegram-Bot-Api-Secret-Token`.
+
+Меню команд рядом с полем ввода (один раз, необязательно):
+
+```bash
+npm run set-commands
+```
 
 ## Отступление от чистой архитектуры (осознанное)
 

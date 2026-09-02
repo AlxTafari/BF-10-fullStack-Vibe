@@ -9,17 +9,23 @@ export interface Conversion {
   rate: number;
   /** 1 to = inverseRate from */
   inverseRate: number;
+  /** Сумма из запроса ("100 EUR в GBP"), если была. */
+  amount: number | null;
+  /** amount from в валюте to, если amount задан. */
+  converted: number | null;
   asOf: Date;
   provider: string;
 }
 
 /**
- * Доп. фича: два кода валют — вернуть курс одной к другой.
+ * Конвертер: два кода валют (или синонима) — курс одной к другой.
+ * Если передана сумма — посчитать результат перевода.
  */
 export async function convertCurrency(
   rawFrom: string,
   rawTo: string,
   provider: RatesProvider,
+  amount: number | null = null,
 ): Promise<Conversion> {
   const from = toCurrencyCode(rawFrom);
   const to = toCurrencyCode(rawTo);
@@ -31,6 +37,8 @@ export async function convertCurrency(
     to,
     rate,
     inverseRate: 1 / rate,
+    amount,
+    converted: amount === null ? null : amount * rate,
     asOf: new Date(snap.timestamp),
     provider: snap.providerName,
   };

@@ -14,41 +14,57 @@ function fakeMessenger() {
   return { messenger, sent };
 }
 
+function run(text: string, deps = { provider: fakeProvider() }) {
+  const { messenger, sent } = fakeMessenger();
+  return handleIncomingMessage({ chatId: 1, text }, { ...deps, messenger }).then(
+    () => sent[0]?.text ?? "",
+  );
+}
+
 describe("handleIncomingMessage", () => {
   it("/start отвечает справкой", async () => {
-    const { messenger, sent } = fakeMessenger();
-    await handleIncomingMessage(
-      { chatId: 1, text: "/start" },
-      { provider: fakeProvider(), messenger },
-    );
-    expect(sent[0]?.text).toContain("ISO 4217");
+    expect(await run("/start")).toContain("курсы валют");
+  });
+
+  it("/rates@some_bot тоже срабатывает (группы)", async () => {
+    expect(await run("/rates@currency_bot")).toContain("Курсы к доллару США");
+  });
+
+  it("/source показывает провайдер", async () => {
+    expect(await run("/source")).toContain("fake");
   });
 
   it("один код -> курс к USD", async () => {
-    const { messenger, sent } = fakeMessenger();
-    await handleIncomingMessage(
-      { chatId: 1, text: "курс JPY" },
-      { provider: fakeProvider(), messenger },
-    );
-    expect(sent[0]?.text).toContain("JPY / USD");
+    expect(await run("курс JPY")).toContain("JPY");
+  });
+
+  it("русское название -> курс", async () => {
+    expect(await run("сколько стоит евро")).toContain("EUR");
+  });
+
+  it("сумма + пара -> конвертация", async () => {
+    const reply = await run("100 EUR в GBP");
+    expect(reply).toContain("100 EUR =");
+    expect(reply).toContain("GBP");
   });
 
   it("два кода -> кросс-курс", async () => {
-    const { messenger, sent } = fakeMessenger();
-    await handleIncomingMessage(
-      { chatId: 1, text: "EUR GBP" },
-      { provider: fakeProvider(), messenger },
-    );
-    expect(sent[0]?.text).toContain("EUR / GBP");
+    expect(await run("EUR GBP")).toContain("EUR");
   });
 
-  it("нет кодов -> подсказка", async () => {
-    const { messenger, sent } = fakeMessenger();
-    await handleIncomingMessage(
-      { chatId: 1, text: "привет" },
-      { provider: fakeProvider(), messenger },
-    );
-    expect(sent[0]?.text).toContain("Не нашёл код валюты");
+  it("только USD -> подсказка про базу", async () => {
+    expect(await run("USD")).toContain("база отсчёта");
+  });
+
+  it("нет валют -> подсказка", async () => {
+    expect(await run("привет")).toContain("Не нашёл валюту");
+  });
+
+  it("валюты нет у провайдера -> отдельное сообщение (не 'недоступен')", async () => {
+    // снимок без RUB
+    const reply = await run("RUB", { provider: fakeProvider({ EUR: 0.9 }) });
+    expect(reply).toContain("нет курса для RUB");
+    expect(reply).not.toContain("недоступен");
   });
 
   it("ошибка провайдера -> нейтральный текст, ошибка в логе", async () => {

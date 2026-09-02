@@ -6,7 +6,7 @@ import type {
 
 /** USD-базовый снимок с фиксированными курсами для тестов. */
 export function fakeProvider(
-  rates: Record<string, number> = { EUR: 0.9, GBP: 0.8, JPY: 150 },
+  rates: Record<string, number> = { EUR: 0.9, GBP: 0.8, JPY: 150, RUB: 90, CNY: 7 },
 ): RatesProvider {
   const snap: RateSnapshot = {
     base: "USD" as CurrencyCode,

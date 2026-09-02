@@ -21,3 +21,17 @@ export class RatesProviderError extends Error {
     this.name = "RatesProviderError";
   }
 }
+
+/**
+ * Валюта нам известна, но у активного провайдера её курса нет
+ * (например RUB у Frankfurter / ЕЦБ). Отличается от сетевой ошибки.
+ */
+export class RateNotAvailableError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly provider: string,
+  ) {
+    super(`Rate for ${code} not available from ${provider}`);
+    this.name = "RateNotAvailableError";
+  }
+}
