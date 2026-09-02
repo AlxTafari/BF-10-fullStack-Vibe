@@ -14,6 +14,14 @@ export function buildApp(): FastifyInstance {
   const app = Fastify({ logger: true });
   const deps = buildContainer(config, (err) => app.log.error(err));
 
+  // Заглушка на корень: без неё Vercel-rewrite ведёт сюда любой GET
+  // и Fastify отдаёт 500 (нет роута). Сам эндпоинт ничего не раскрывает.
+  app.get("/", async () => ({
+    ok: true,
+    bot: "currency-converter",
+    repo: "https://github.com/AlxTafari/BF-10-WhatsUpCurrency",
+  }));
+
   app.get("/health", async () => ({
     ok: true,
     provider: deps.provider.name,
