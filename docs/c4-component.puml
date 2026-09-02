@@ -1,0 +1,36 @@
+@startuml C4_Component
+' Currency Converter Bot — уровень 3: Components (ядро приложения)
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/latest/C4_Component.puml
+
+title Currency Converter Bot — Components (ядро приложения)
+
+System_Ext(http, "HTTP-адаптер", "Fastify")
+System_Ext(rates, "Провайдер курсов", "OXR | Frankfurter")
+System_Ext(tg, "Telegram Bot API")
+
+Container_Boundary(core, "Ядро приложения") {
+    Component(handle, "handleIncomingMessage", "use case", "Роутинг: /help · 1 код · 2 кода · нет кодов")
+    Component(parse, "extractCurrencyCodes", "parsing", "Достаёт коды из текста по белому списку")
+    Component(rateUsd, "getRateAgainstUsd", "use case", "Курс валюты к USD (прямой и обратный)")
+    Component(convert, "convertCurrency", "use case", "Кросс-курс валюты к валюте")
+    Component(math, "rateMath", "domain logic", "unitsPerBase, crossRate")
+    Component(reply, "replyText", "presentation", "Форматирование текста ответов")
+    Component(portRates, "RatesProvider", "port (interface)", "getSnapshot()")
+    Component(portMsg, "Messenger", "port (interface)", "sendMessage()")
+}
+
+Rel(http, handle, "вызывает")
+Rel(handle, parse, "разбор текста")
+Rel(handle, rateUsd, "один код")
+Rel(handle, convert, "два кода")
+Rel(handle, reply, "форматирование")
+Rel(handle, portMsg, "sendMessage")
+Rel(rateUsd, math, "")
+Rel(convert, math, "")
+Rel(rateUsd, portRates, "getSnapshot")
+Rel(convert, portRates, "getSnapshot")
+Rel(portRates, rates, "реализация: fetch + кеш")
+Rel(portMsg, tg, "реализация: fetch")
+
+SHOW_LEGEND()
+@enduml

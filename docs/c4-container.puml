@@ -1,0 +1,27 @@
+@startuml C4_Container
+' Currency Converter Bot — уровень 2: Containers
+' Приложение — один деплой-юнит (serverless-функция / Node-процесс).
+' "Контейнеры" здесь логические: транспорт, ядро и внешние адаптеры в одном рантайме.
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/latest/C4_Container.puml
+
+title Currency Converter Bot — Containers
+
+Person(user, "Пользователь Telegram")
+System_Ext(tg, "Telegram Bot API")
+System_Ext(rates, "Провайдер курсов", "Open Exchange Rates | Frankfurter")
+
+System_Boundary(app, "Currency Converter Bot") {
+    Container(http, "HTTP-адаптер", "Fastify", "POST /webhook: проверка секрета, маппинг Update, вызов use case. GET /health")
+    Container(core, "Ядро приложения", "TypeScript", "Use cases, доменные правила, порты RatesProvider / Messenger")
+    Container(adapters, "Внешние адаптеры", "fetch", "TelegramMessenger, OxrProvider, FrankfurterProvider (кеш в памяти)")
+}
+
+Rel(user, tg, "Пишет сообщение")
+Rel(tg, http, "Update", "HTTPS + secret_token")
+Rel(http, core, "handleIncomingMessage()")
+Rel(core, adapters, "через порты-интерфейсы")
+Rel(adapters, tg, "sendMessage", "HTTPS")
+Rel(adapters, rates, "latest rates", "HTTPS")
+
+SHOW_LEGEND()
+@enduml
