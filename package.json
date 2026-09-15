@@ -1,28 +1,14 @@
 {
-  "name": "currency-converter-bot",
+  "name": "vibe-monorepo",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "dev": "node --env-file=.env --import tsx --watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/src/index.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
-    "set-webhook": "node --env-file=.env --import tsx scripts/setWebhook.ts",
-    "delete-webhook": "node --env-file=.env --import tsx scripts/deleteWebhook.ts",
-    "set-commands": "node --env-file=.env --import tsx scripts/setCommands.ts"
-  },
-  "dependencies": {
-    "fastify": "^5.2.1"
-  },
-  "devDependencies": {
-    "@types/node": "^22.10.5",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.3",
-    "vitest": "^3.2.7"
+    "dev:bot": "pnpm --filter currency-converter-bot dev",
+    "build:bot": "pnpm --filter currency-converter-bot build",
+    "test:bot": "pnpm --filter currency-converter-bot test",
+    "typecheck:bot": "pnpm --filter currency-converter-bot typecheck"
   }
 }
