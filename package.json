@@ -9,6 +9,11 @@
     "dev:bot": "pnpm --filter currency-converter-bot dev",
     "build:bot": "pnpm --filter currency-converter-bot build",
     "test:bot": "pnpm --filter currency-converter-bot test",
-    "typecheck:bot": "pnpm --filter currency-converter-bot typecheck"
+    "typecheck:bot": "pnpm --filter currency-converter-bot typecheck",
+    "start:supabase": "pnpm --filter 02-lesson start",
+    "stop:supabase": "pnpm --filter 02-lesson stop",
+    "serve:supabase": "pnpm --filter 02-lesson serve",
+    "deploy:supabase": "pnpm --filter 02-lesson functions:deploy",
+    "link:supabase": "pnpm --filter 02-lesson link"
   }
 }
