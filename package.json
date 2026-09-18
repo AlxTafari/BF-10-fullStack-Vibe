@@ -14,6 +14,13 @@
     "stop:supabase": "pnpm --filter 02-lesson stop",
     "serve:supabase": "pnpm --filter 02-lesson serve",
     "deploy:supabase": "pnpm --filter 02-lesson functions:deploy",
-    "link:supabase": "pnpm --filter 02-lesson link"
+    "link:supabase": "pnpm --filter 02-lesson run link",
+    "start:village": "pnpm --filter 03-lesson start",
+    "stop:village": "pnpm --filter 03-lesson stop",
+    "serve:village": "pnpm --filter 03-lesson serve",
+    "deploy:village": "pnpm --filter 03-lesson functions:deploy",
+    "link:village": "pnpm --filter 03-lesson run link",
+    "db:push:village": "pnpm --filter 03-lesson db:push",
+    "db:reset:village": "pnpm --filter 03-lesson db:reset"
   }
 }

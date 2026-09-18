@@ -33,6 +33,12 @@ importers:
         specifier: ^2.117.0
         version: 2.117.0
 
+  apps/03-supabase-lesson:
+    devDependencies:
+      supabase:
+        specifier: ^2.117.0
+        version: 2.117.0
+
 packages:
 
   '@ecies/ciphers@0.2.6':

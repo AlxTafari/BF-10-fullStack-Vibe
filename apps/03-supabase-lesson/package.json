@@ -1,0 +1,22 @@
+{
+  "name": "03-lesson",
+  "version": "1.0.0",
+  "description": "Странная деревня — телеграм-бот на Supabase (урок 3)",
+  "main": "index.js",
+  "scripts": {
+    "start": "supabase start",
+    "stop": "supabase stop",
+    "serve": "supabase functions serve --env-file .env",
+    "functions:deploy": "supabase functions deploy",
+    "db:push": "supabase db push",
+    "db:reset": "supabase db reset",
+    "link": "supabase link --project-ref iyedbisfzdhotfrrsxdt"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "supabase": "^2.117.0"
+  }
+}
