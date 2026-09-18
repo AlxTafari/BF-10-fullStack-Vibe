@@ -1,5 +1,5 @@
 import { getCamps } from "../../_shared/repositories/campsRepo.ts";
-import { campButtonLabel } from "../../_shared/content.ts";
+import { campButtonLabel, MAIN_MENU } from "../../_shared/content.ts";
 import { setUserCamp, setUserName } from "../../_shared/repositories/usersRepo.ts";
 import type { InlineKeyboard } from "../../_shared/telegram/types.ts";
 import type { UserRow } from "../../_shared/types.ts";
@@ -39,5 +39,6 @@ export async function handleCampSelected(
     `🎉 Добро пожаловать в деревню, ${updated.name}!\n\nТвой лагерь выбран — теперь ты свой у этого костра.\n\n💬 Просто напиши что-нибудь — тебе перескажут местную сплетню.\n📰 Хочешь пустить свою — жми кнопку ниже.`,
     [[{ text: "✍️ Написать сплетню", switch_inline_query_current_chat: "" }]],
   );
+  await reply(ctx, updated.id, "📋 Меню деревни теперь всегда под рукой ↓", undefined, MAIN_MENU);
   return updated;
 }

@@ -41,6 +41,9 @@ export interface InlineKeyboardButton {
 
 export type InlineKeyboard = InlineKeyboardButton[][];
 
+// Постоянное меню снизу экрана — тап по кнопке просто отправляет её текст как обычное сообщение.
+export type ReplyKeyboard = string[][];
+
 export interface InlineQueryResultArticle {
   type: "article";
   id: string;

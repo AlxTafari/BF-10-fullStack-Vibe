@@ -1,4 +1,5 @@
 import { parseCommand, parseNewsArgs } from "../_shared/commands.ts";
+import { MAIN_MENU, MENU_BUTTON_COMMANDS } from "../_shared/content.ts";
 import { createPendingUser, findUserByTgId } from "../_shared/repositories/usersRepo.ts";
 import type { TelegramCallbackQuery, TelegramMessage, TelegramUpdate } from "../_shared/telegram/types.ts";
 import type { ReactionType, UserRow } from "../_shared/types.ts";
@@ -12,6 +13,7 @@ import { handleSwitchCamp } from "./handlers/campSwitch.ts";
 import { handleResidents } from "./handlers/residents.ts";
 import { handleReaction } from "./handlers/reactions.ts";
 import { handleInlineQuery } from "./handlers/inlineNews.ts";
+import { handleAbout } from "./handlers/about.ts";
 
 const NEWS_INLINE_HINT_KEYBOARD = [
   [{ text: "✍️ Написать сплетню", switch_inline_query_current_chat: "" }],
@@ -58,7 +60,13 @@ async function handleMessage(ctx: HandlerContext, message: TelegramMessage): Pro
   }
 
   if (START_COMMAND.test(text.trim())) {
-    await reply(ctx, user.id, `👋 Ты уже в деревне, ${user.name}. Просто пиши — сплетни сами найдутся. Или загляни в команды.`);
+    await reply(
+      ctx,
+      user.id,
+      `👋 Ты уже в деревне, ${user.name}. Просто пиши — сплетни сами найдутся. Или загляни в меню.`,
+      undefined,
+      MAIN_MENU,
+    );
     return;
   }
 
@@ -66,7 +74,9 @@ async function handleMessage(ctx: HandlerContext, message: TelegramMessage): Pro
 }
 
 async function routeOnboardedMessage(ctx: HandlerContext, user: UserRow, text: string): Promise<void> {
-  const parsed = parseCommand(text);
+  // Кнопки нижнего меню шлют свой текст как обычное сообщение — разворачиваем его в команду.
+  const fromMenuButton = MENU_BUTTON_COMMANDS[text.trim()];
+  const parsed = parseCommand(fromMenuButton ?? text);
   if (!parsed) {
     await handleFreeText(ctx, user);
     return;
@@ -100,6 +110,10 @@ async function routeOnboardedMessage(ctx: HandlerContext, user: UserRow, text: s
     case "/жители":
     case "/residents":
       await handleResidents(ctx, user);
+      return;
+    case "/что_здесь_происходит":
+    case "/about":
+      await handleAbout(ctx, user);
       return;
     default:
       await reply(ctx, user.id, "🤷 Такая команда деревне неизвестна.");

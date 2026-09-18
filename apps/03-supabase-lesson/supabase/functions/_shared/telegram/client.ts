@@ -1,4 +1,4 @@
-import type { InlineKeyboard, InlineQueryResultArticle } from "./types.ts";
+import type { InlineKeyboard, InlineQueryResultArticle, ReplyKeyboard } from "./types.ts";
 
 export function createTelegramClient(botToken: string) {
   const apiBase = `https://api.telegram.org/bot${botToken}`;
@@ -16,12 +16,19 @@ export function createTelegramClient(botToken: string) {
   }
 
   return {
-    sendMessage(chatId: number, text: string, keyboard?: InlineKeyboard): Promise<void> {
-      return call("sendMessage", {
-        chat_id: chatId,
-        text,
-        reply_markup: keyboard ? { inline_keyboard: keyboard } : undefined,
-      });
+    // keyboard и replyKeyboard взаимоисключающие — тг разрешает только один reply_markup на сообщение.
+    sendMessage(
+      chatId: number,
+      text: string,
+      keyboard?: InlineKeyboard,
+      replyKeyboard?: ReplyKeyboard,
+    ): Promise<void> {
+      const replyMarkup = keyboard
+        ? { inline_keyboard: keyboard }
+        : replyKeyboard
+          ? { keyboard: replyKeyboard, resize_keyboard: true }
+          : undefined;
+      return call("sendMessage", { chat_id: chatId, text, reply_markup: replyMarkup });
     },
     editMessageText(
       chatId: number,
