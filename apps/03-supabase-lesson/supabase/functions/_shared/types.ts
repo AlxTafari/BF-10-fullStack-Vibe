@@ -17,6 +17,7 @@ export interface UserRow {
 export interface NewsRow {
   id: string;
   author_id: string | null;
+  posted_by: string | null;
   camp_id: string | null;
   text: string;
   created_at: string;

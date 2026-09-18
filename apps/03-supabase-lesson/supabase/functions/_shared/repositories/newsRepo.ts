@@ -3,15 +3,41 @@ import type { NewsRow } from "../types.ts";
 
 export async function insertNews(
   client: SupabaseClient,
-  params: { authorId: string | null; campId: string | null; text: string },
+  params: { authorId: string | null; postedBy: string; campId: string | null; text: string },
 ): Promise<NewsRow> {
   const { data, error } = await client
     .from("news")
-    .insert({ author_id: params.authorId, camp_id: params.campId, text: params.text })
+    .insert({
+      author_id: params.authorId,
+      posted_by: params.postedBy,
+      camp_id: params.campId,
+      text: params.text,
+    })
     .select("*")
     .single();
   if (error) throw error;
   return data;
+}
+
+/** Дневной лимит: считает по posted_by (реальный автор), отдельно для обычных и анонимных сплетен. */
+export async function countNewsPostedToday(
+  client: SupabaseClient,
+  postedBy: string,
+  anonymous: boolean,
+): Promise<number> {
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
+
+  let query = client
+    .from("news")
+    .select("id", { count: "exact", head: true })
+    .eq("posted_by", postedBy)
+    .gte("created_at", startOfDay.toISOString());
+  query = anonymous ? query.is("author_id", null) : query.not("author_id", "is", null);
+
+  const { count, error } = await query;
+  if (error) throw error;
+  return count ?? 0;
 }
 
 /** Пул для нпс-ответа на любое сообщение: свой лагерь + общий филлер. */

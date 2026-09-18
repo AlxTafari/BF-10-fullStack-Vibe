@@ -1,5 +1,6 @@
 import type { TelegramInlineQuery, InlineQueryResultArticle } from "../../_shared/telegram/types.ts";
 import type { HandlerContext } from "../context.ts";
+import { NEWS_TEXT_MAX_LENGTH } from "./news.ts";
 
 /**
  * Инлайн-режим (@bot_username <текст> в поле ввода без отправки): даёт выбор "обычно / анонимно",
@@ -7,7 +8,11 @@ import type { HandlerContext } from "../context.ts";
  */
 export async function handleInlineQuery(ctx: HandlerContext, iq: TelegramInlineQuery): Promise<void> {
   const text = iq.query.trim();
-  const preview = text ? (text.length > 80 ? `${text.slice(0, 80)}…` : text) : "начни печатать текст сплетни";
+  const preview = text
+    ? text.length > NEWS_TEXT_MAX_LENGTH
+      ? `${text.slice(0, NEWS_TEXT_MAX_LENGTH)}…`
+      : text
+    : "начни печатать текст сплетни";
 
   const results: InlineQueryResultArticle[] = [
     {

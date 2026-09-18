@@ -9,8 +9,8 @@ import { logMessage } from "../../_shared/repositories/messagesRepo.ts";
 import type { HandlerContext } from "../context.ts";
 
 const TOP_COUNT = 3;
-const TOP_MEDALS = ["🥇", "🥈", "🥉"];
-const SECTION_DIVIDER = "━━━━━━━━━━━━━━";
+const TOP_MARKERS = ["1.", "2.", "3."];
+const SECTION_DIVIDER = "· · ·";
 
 // Русское склонение "реакция/реакции/реакций" по числу.
 function reactionWord(count: number): string {
@@ -55,7 +55,7 @@ async function buildGossipListView(
   const topLines = top
     .map((entry, i) => {
       const snippet = entry.news.text.length > 60 ? `${entry.news.text.slice(0, 60)}…` : entry.news.text;
-      return `${TOP_MEDALS[i]} «${snippet}» — ${entry.count} ${reactionWord(entry.count)}`;
+      return `${TOP_MARKERS[i]} «${snippet}» — ${entry.count} ${reactionWord(entry.count)}`;
     })
     .join("\n");
 
@@ -70,11 +70,11 @@ async function buildGossipListView(
   const userReaction = await getUserReaction(ctx.client, user.id, current.id);
 
   const text = [
-    "🏆 ТОП СПЛЕТЕН ЛАГЕРЯ",
+    "📜 О чём шепчутся у костра",
     SECTION_DIVIDER,
     topLines || "пока тишина, реакций ещё нет",
     "",
-    `📖 Страница ${index + 1} из ${items.length}${fallbackNote}`,
+    `📖 Сплетня ${index + 1} из ${items.length}${fallbackNote}`,
     "",
     SECTION_DIVIDER,
     attributed,
