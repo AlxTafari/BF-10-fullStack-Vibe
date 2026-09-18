@@ -13,7 +13,7 @@ export async function handleFreeText(ctx: HandlerContext, user: UserRow): Promis
   const pool = await getGossipPool(ctx.client, campId);
   const news = pickRandom(pool);
   if (!news) {
-    await reply(ctx, user.id, "У костра сегодня тихо — сплетен пока нет.");
+    await reply(ctx, user.id, "🔥 У костра сегодня тихо — сплетен пока нет.");
     return;
   }
 

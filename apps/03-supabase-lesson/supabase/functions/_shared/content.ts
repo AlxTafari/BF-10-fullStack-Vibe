@@ -48,6 +48,16 @@ export function campButtonLabel(campName: string): string {
   return emoji ? `${emoji} ${campName}` : campName;
 }
 
+// Дательный падеж для "Теперь ты примкнул к ..." — на два жёстких лагеря MVP склонение проще зашить, чем городить морфологию.
+const CAMP_DATIVE: Record<string, string> = {
+  "Первый лагерь": "первому лагерю",
+  "Второй лагерь": "второму лагерю",
+};
+
+export function campDativeLabel(campName: string): string {
+  return CAMP_DATIVE[campName] ?? `лагерю «${campName}»`;
+}
+
 export const REACTIONS: readonly { type: ReactionType; emoji: string }[] = [
   { type: "like", emoji: "👍" },
   { type: "funny", emoji: "😂" },

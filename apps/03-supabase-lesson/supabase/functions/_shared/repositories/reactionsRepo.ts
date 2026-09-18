@@ -15,22 +15,40 @@ export async function upsertReaction(
   if (error) throw error;
 }
 
-/** Число реакций на каждую новость из пула — для топ-3 в шапке /сплетни. */
+/** Разбивка реакций по типам на каждую новость из пула — топ-3 в шапке суммирует, карточка сплетни показывает построчно. */
 export async function getReactionCounts(
   client: SupabaseClient,
   newsIds: string[],
-): Promise<Map<string, number>> {
-  const counts = new Map<string, number>();
+): Promise<Map<string, Partial<Record<ReactionType, number>>>> {
+  const counts = new Map<string, Partial<Record<ReactionType, number>>>();
   if (newsIds.length === 0) return counts;
 
   const { data, error } = await client
     .from("news_reactions")
-    .select("news_id")
+    .select("news_id, reaction_type")
     .in("news_id", newsIds);
   if (error) throw error;
 
   for (const row of data ?? []) {
-    counts.set(row.news_id, (counts.get(row.news_id) ?? 0) + 1);
+    const byType = counts.get(row.news_id) ?? {};
+    byType[row.reaction_type as ReactionType] = (byType[row.reaction_type as ReactionType] ?? 0) + 1;
+    counts.set(row.news_id, byType);
   }
   return counts;
+}
+
+/** Какую реакцию этот пользователь уже поставил конкретной сплетне — для галочки на кнопке. */
+export async function getUserReaction(
+  client: SupabaseClient,
+  userId: string,
+  newsId: string,
+): Promise<ReactionType | null> {
+  const { data, error } = await client
+    .from("news_reactions")
+    .select("reaction_type")
+    .eq("user_id", userId)
+    .eq("news_id", newsId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.reaction_type as ReactionType | undefined) ?? null;
 }

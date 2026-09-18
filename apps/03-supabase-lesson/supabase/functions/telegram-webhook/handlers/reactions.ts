@@ -15,6 +15,6 @@ export async function handleReaction(
     newsId: params.newsId,
     reactionType: params.reactionType,
   });
-  await ctx.tg.answerCallbackQuery(callbackQueryId, "Учтено!");
+  await ctx.tg.answerCallbackQuery(callbackQueryId, "Спасибо, что поделился! 🔥");
   await updateGossipList(ctx, user, messageId, params.index);
 }

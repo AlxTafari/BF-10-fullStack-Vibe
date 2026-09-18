@@ -58,7 +58,7 @@ async function handleMessage(ctx: HandlerContext, message: TelegramMessage): Pro
   }
 
   if (START_COMMAND.test(text.trim())) {
-    await reply(ctx, user.id, `Ты уже в деревне, ${user.name}. Просто пиши — или используй команды.`);
+    await reply(ctx, user.id, `👋 Ты уже в деревне, ${user.name}. Просто пиши — сплетни сами найдутся. Или загляни в команды.`);
     return;
   }
 
@@ -81,7 +81,7 @@ async function routeOnboardedMessage(ctx: HandlerContext, user: UserRow, text: s
         await reply(
           ctx,
           user.id,
-          'Напиши так: /новость "текст" или /новость анонимно "текст". Либо кнопкой ниже — тап вставит @бота в поле ввода, допиши текст и выбери вариант публикации.',
+          '✏️ Не расслышал сплетню.\n\nНапиши так: /новость "текст"\nили анонимно: /новость анонимно "текст"\n\nЛибо жми кнопку ниже — она сама подставит @бота, останется дописать текст и выбрать, как публиковать.',
           NEWS_INLINE_HINT_KEYBOARD,
         );
         return;
@@ -102,7 +102,7 @@ async function routeOnboardedMessage(ctx: HandlerContext, user: UserRow, text: s
       await handleResidents(ctx, user);
       return;
     default:
-      await reply(ctx, user.id, "Такая команда деревне неизвестна.");
+      await reply(ctx, user.id, "🤷 Такая команда деревне неизвестна.");
   }
 }
 

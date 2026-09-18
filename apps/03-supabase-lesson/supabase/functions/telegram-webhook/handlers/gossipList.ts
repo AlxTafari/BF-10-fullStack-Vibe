@@ -2,13 +2,24 @@ import { IMPERSONAL_INTROS, NAMED_INTROS, REACTIONS } from "../../_shared/conten
 import { attributeNews } from "../../_shared/domain/gossip.ts";
 import { resolveGossipFeed } from "../../_shared/domain/feedFallback.ts";
 import { getAuthorsByIds, getCampNews, getFillerNews } from "../../_shared/repositories/newsRepo.ts";
-import { getReactionCounts } from "../../_shared/repositories/reactionsRepo.ts";
+import { getReactionCounts, getUserReaction } from "../../_shared/repositories/reactionsRepo.ts";
 import type { InlineKeyboard } from "../../_shared/telegram/types.ts";
 import type { UserRow } from "../../_shared/types.ts";
 import { logMessage } from "../../_shared/repositories/messagesRepo.ts";
 import type { HandlerContext } from "../context.ts";
 
 const TOP_COUNT = 3;
+const TOP_MEDALS = ["🥇", "🥈", "🥉"];
+const SECTION_DIVIDER = "━━━━━━━━━━━━━━";
+
+// Русское склонение "реакция/реакции/реакций" по числу.
+function reactionWord(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return "реакция";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "реакции";
+  return "реакций";
+}
 
 async function buildGossipListView(
   ctx: HandlerContext,
@@ -23,7 +34,7 @@ async function buildGossipListView(
   ]);
   const { items, usedFallback } = resolveGossipFeed(campNews, fillerNews);
   if (items.length === 0) {
-    return { text: "У костра сегодня тихо — сплетен пока нет.", keyboard: [] };
+    return { text: "🔥 У костра сегодня тихо — сплетен пока нет.", keyboard: [] };
   }
 
   const index = Math.min(Math.max(requestedIndex, 0), items.length - 1);
@@ -33,30 +44,42 @@ async function buildGossipListView(
   const authors = await getAuthorsByIds(ctx.client, authorIds);
 
   const counts = await getReactionCounts(ctx.client, items.map((n) => n.id));
+  const totalCount = (newsId: string) =>
+    Object.values(counts.get(newsId) ?? {}).reduce((sum, n) => sum + (n ?? 0), 0);
+
   const top = [...items]
-    .map((news) => ({ news, count: counts.get(news.id) ?? 0 }))
+    .map((news) => ({ news, count: totalCount(news.id) }))
     .sort((a, b) => b.count - a.count)
     .slice(0, TOP_COUNT);
 
   const topLines = top
     .map((entry, i) => {
       const snippet = entry.news.text.length > 60 ? `${entry.news.text.slice(0, 60)}…` : entry.news.text;
-      return `${i + 1}. «${snippet}» — ${entry.count} реакций`;
+      return `${TOP_MEDALS[i]} «${snippet}» — ${entry.count} ${reactionWord(entry.count)}`;
     })
     .join("\n");
 
   const author = current.author_id ? authors.get(current.author_id) ?? null : null;
   const attributed = attributeNews(current, author, NAMED_INTROS, IMPERSONAL_INTROS);
   const fallbackNote = usedFallback
-    ? "\n(у твоего лагеря пока нет своих сплетен — показываю общие)"
+    ? "\n💭 у твоего лагеря пока нет своих сплетен — держи общие"
     : "";
 
+  const currentCounts = counts.get(current.id) ?? {};
+  const reactionLine = REACTIONS.map((r) => `${r.emoji} ${currentCounts[r.type] ?? 0}`).join("  ");
+  const userReaction = await getUserReaction(ctx.client, user.id, current.id);
+
   const text = [
-    "🏆 Топ сплетен лагеря:",
-    topLines || "пока без реакций",
+    "🏆 ТОП СПЛЕТЕН ЛАГЕРЯ",
+    SECTION_DIVIDER,
+    topLines || "пока тишина, реакций ещё нет",
     "",
-    `Страница ${index + 1}/${items.length}${fallbackNote}`,
+    `📖 Страница ${index + 1} из ${items.length}${fallbackNote}`,
+    "",
+    SECTION_DIVIDER,
     attributed,
+    "",
+    reactionLine,
   ].join("\n");
 
   const keyboard: InlineKeyboard = [];
@@ -67,7 +90,7 @@ async function buildGossipListView(
 
   keyboard.push(
     REACTIONS.map((r) => ({
-      text: r.emoji,
+      text: r.type === userReaction ? `✅${r.emoji}` : r.emoji,
       callback_data: `rx:${index}:${current.id}:${r.type}`,
     })),
   );

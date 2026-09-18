@@ -15,7 +15,7 @@ export async function handlePostNews(
   });
 
   const confirmation = params.anonymous
-    ? "Слух пущен анонимно — теперь его никто не свяжет с тобой."
-    : "Готово, твоя история уже расходится по лагерю.";
+    ? "🕶️ Анонимная сплетня ушла в лагерь — концов не найти."
+    : "📰 Готово! Твою историю уже обсуждают в лагере.";
   await reply(ctx, user.id, confirmation);
 }

@@ -7,7 +7,7 @@ import type { HandlerContext } from "../context.ts";
 import { reply } from "../logging.ts";
 
 export async function askName(ctx: HandlerContext, user: UserRow): Promise<void> {
-  await reply(ctx, user.id, "Странная деревня рада гостю. Как тебя здесь называть?");
+  await reply(ctx, user.id, "🌲 Странная деревня встречает нового гостя...\n\nКак тебя здесь называть?");
 }
 
 export async function handleNameAnswer(
@@ -24,7 +24,7 @@ export async function askCamp(ctx: HandlerContext, user: UserRow): Promise<void>
   const keyboard: InlineKeyboard = camps.map((camp) => [
     { text: campButtonLabel(camp.name), callback_data: `camp:${camp.id}` },
   ]);
-  await reply(ctx, user.id, `${user.name}, к какому лагерю ты примкнёшь?`, keyboard);
+  await reply(ctx, user.id, `🏕️ ${user.name}, у костра выбирают сторону.\n\nК какому лагерю ты примкнёшь?`, keyboard);
 }
 
 export async function handleCampSelected(
@@ -36,7 +36,7 @@ export async function handleCampSelected(
   await reply(
     ctx,
     updated.id,
-    `Добро пожаловать в деревню, ${updated.name}! Твой лагерь выбран. Просто напиши что-нибудь — и у костра тебе перескажут местную сплетню.\n\nХочешь пустить свою сплетню — жми кнопку ниже: вставит @бота в поле ввода, допиши текст и выбери вариант публикации.`,
+    `🎉 Добро пожаловать в деревню, ${updated.name}!\n\nТвой лагерь выбран — теперь ты свой у этого костра.\n\n💬 Просто напиши что-нибудь — тебе перескажут местную сплетню.\n📰 Хочешь пустить свою — жми кнопку ниже.`,
     [[{ text: "✍️ Написать сплетню", switch_inline_query_current_chat: "" }]],
   );
   return updated;
