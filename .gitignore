@@ -6,3 +6,4 @@ dist
 .vercel
 *.log
 QA.md
+apps/03-supabase-lesson/docs/

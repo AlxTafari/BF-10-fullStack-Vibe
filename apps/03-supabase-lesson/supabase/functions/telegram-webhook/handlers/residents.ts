@@ -10,7 +10,7 @@ export async function handleResidents(ctx: HandlerContext, user: UserRow): Promi
     return;
   }
 
-  // Лагерь у всех сейчас один и тот же (нейтралитет, см. GAME_DESIGN_REVIEW.md 6.1) — в списке не показываем.
+  // Лагерь у всех сейчас один и тот же (нейтралитет, см. docs/GAME_DESIGN_REVIEW.md 6.1) — в списке не показываем.
   const lines = residents.map((r) => `• ${r.user.name ?? "безымянный"} — сплетен: ${r.newsCount}`);
   await reply(
     ctx,

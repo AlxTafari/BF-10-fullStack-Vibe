@@ -12,7 +12,7 @@ import type { UserRow } from "../../_shared/types.ts";
 import type { HandlerContext } from "../context.ts";
 import { reply } from "../logging.ts";
 
-// Любое сообщение реагирует по-разному в зависимости от сцены (village/campfire) — см. GAME_DESIGN_REVIEW.md, раздел 7.
+// Любое сообщение реагирует по-разному в зависимости от сцены (village/campfire) — см. docs/GAME_DESIGN_REVIEW.md, раздел 7.
 export async function handleFreeText(ctx: HandlerContext, user: UserRow): Promise<void> {
   if (user.scene === "campfire") {
     await reply(ctx, user.id, TERMINAL_REFUSAL_PHRASE);
