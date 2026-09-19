@@ -12,11 +12,16 @@ export async function handlePostNews(
   user: UserRow,
   params: { anonymous: boolean; text: string },
 ): Promise<void> {
+  if (user.scene !== "campfire") {
+    await reply(ctx, user.id, "📰 Подойди к терминалу, чтобы поделиться новостью.");
+    return;
+  }
+
   if (params.text.length > NEWS_TEXT_MAX_LENGTH) {
     await reply(
       ctx,
       user.id,
-      `✂️ Сплетня длинновата — уложись в ${NEWS_TEXT_MAX_LENGTH} символов, у костра любят покороче.`,
+      `✂️ Весть длинновата — уложись в ${NEWS_TEXT_MAX_LENGTH} символов, у костра любят покороче.`,
     );
     return;
   }
@@ -25,8 +30,8 @@ export async function handlePostNews(
   const dailyLimit = params.anonymous ? MAX_ANON_NEWS_PER_DAY : MAX_REGULAR_NEWS_PER_DAY;
   if (postedToday >= dailyLimit) {
     const limitMessage = params.anonymous
-      ? "🕶️ Анонимных сплетен на сегодня хватит — дай тайне отдохнуть до завтра."
-      : "🌙 На сегодня сплетен от тебя уже достаточно — лагерь устал слушать. Возвращайся завтра.";
+      ? "🕶️ Анонимных вестей на сегодня хватит — дай тайне отдохнуть до завтра."
+      : "🌙 На сегодня вестей от тебя уже достаточно — деревня устала слушать. Возвращайся завтра.";
     await reply(ctx, user.id, limitMessage);
     return;
   }
@@ -39,7 +44,7 @@ export async function handlePostNews(
   });
 
   const confirmation = params.anonymous
-    ? "🕶️ Анонимная сплетня ушла в лагерь — концов не найти."
-    : "📰 Готово! Твою историю уже обсуждают в лагере.";
+    ? "🕶️ Анонимная весть ушла в деревню — концов не найти."
+    : "📰 Готово! Твою историю уже обсуждают в деревне.";
   await reply(ctx, user.id, confirmation);
 }

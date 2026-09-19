@@ -15,7 +15,7 @@ export async function upsertReaction(
   if (error) throw error;
 }
 
-/** Разбивка реакций по типам на каждую новость из пула — топ-3 в шапке суммирует, карточка сплетни показывает построчно. */
+/** Разбивка реакций по типам на каждую новость из пула — карточка вести в хронике показывает построчно. */
 export async function getReactionCounts(
   client: SupabaseClient,
   newsIds: string[],
@@ -37,7 +37,7 @@ export async function getReactionCounts(
   return counts;
 }
 
-/** Какую реакцию этот пользователь уже поставил конкретной сплетне — для галочки на кнопке. */
+/** Какую реакцию этот пользователь уже поставил конкретной вести — для галочки на кнопке. */
 export async function getUserReaction(
   client: SupabaseClient,
   userId: string,

@@ -1,5 +1,5 @@
-import { getCamps } from "../../_shared/repositories/campsRepo.ts";
-import { campButtonLabel, MAIN_MENU } from "../../_shared/content.ts";
+import { getCamps, getNeutralCamp } from "../../_shared/repositories/campsRepo.ts";
+import { campButtonLabel, mainMenuForScene } from "../../_shared/content.ts";
 import { setUserCamp, setUserName } from "../../_shared/repositories/usersRepo.ts";
 import type { InlineKeyboard } from "../../_shared/telegram/types.ts";
 import type { UserRow } from "../../_shared/types.ts";
@@ -10,13 +10,20 @@ export async function askName(ctx: HandlerContext, user: UserRow): Promise<void>
   await reply(ctx, user.id, "🌲 Странная деревня встречает нового гостя...\n\nКак тебя здесь называть?");
 }
 
+// Выбор лагеря кнопкой временно отключён — новый житель садится у костра нейтралитета
+// (askCamp/handleCampSelected ниже не удалены, пригодятся, когда выбор лагеря вернётся).
 export async function handleNameAnswer(
   ctx: HandlerContext,
   user: UserRow,
   name: string,
 ): Promise<void> {
   const updated = await setUserName(ctx.client, user.id, name);
-  await askCamp(ctx, updated);
+  const neutralCamp = await getNeutralCamp(ctx.client);
+  if (!neutralCamp) {
+    await askCamp(ctx, updated);
+    return;
+  }
+  await handleCampSelected(ctx, updated, neutralCamp.id);
 }
 
 export async function askCamp(ctx: HandlerContext, user: UserRow): Promise<void> {
@@ -36,9 +43,8 @@ export async function handleCampSelected(
   await reply(
     ctx,
     updated.id,
-    `🎉 Добро пожаловать в деревню, ${updated.name}!\n\nТвой лагерь выбран — теперь ты свой у этого костра.\n\n💬 Просто напиши что-нибудь — тебе перескажут местную сплетню.\n📰 Хочешь пустить свою — жми кнопку ниже.`,
-    [[{ text: "✍️ Написать сплетню", switch_inline_query_current_chat: "" }]],
+    `🎉 Добро пожаловать в деревню, ${updated.name}!\n\nТы стоишь на центральной площади. Рядом — костёр со старым терминалом; чуть дальше — дома, кузница, колодец.\n\n💬 Просто напиши что-нибудь — деревня отзовётся. 🔥 Хочешь рассказать свою историю терминалу — садись у костра (кнопка в меню).`,
   );
-  await reply(ctx, updated.id, "📋 Меню деревни теперь всегда под рукой ↓", undefined, MAIN_MENU);
+  await reply(ctx, updated.id, "📋 Меню деревни теперь всегда под рукой ↓", undefined, mainMenuForScene("village"));
   return updated;
 }

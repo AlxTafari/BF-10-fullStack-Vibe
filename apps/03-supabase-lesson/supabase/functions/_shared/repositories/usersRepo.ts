@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import type { UserRow } from "../types.ts";
+import type { Scene, UserRow } from "../types.ts";
 
 export async function findUserByTgId(
   client: SupabaseClient,
@@ -58,6 +58,21 @@ export async function setUserCamp(
   return data;
 }
 
+export async function setUserScene(
+  client: SupabaseClient,
+  userId: string,
+  scene: Scene,
+): Promise<UserRow> {
+  const { data, error } = await client
+    .from("users")
+    .update({ scene })
+    .eq("id", userId)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export async function touchLastMessageAt(
   client: SupabaseClient,
   userId: string,
@@ -71,11 +86,10 @@ export async function touchLastMessageAt(
 
 export interface ActiveResident {
   user: UserRow;
-  campName: string | null;
   newsCount: number;
 }
 
-/** /жители: активные за 30 дней, с именем лагеря и числом своих (не анонимных) сплетен. */
+/** /жители: активные за 30 дней, с числом своих (не анонимных) сплетен. */
 export async function listActiveResidents(
   client: SupabaseClient,
 ): Promise<ActiveResident[]> {
@@ -83,7 +97,7 @@ export async function listActiveResidents(
 
   const { data: users, error: usersError } = await client
     .from("users")
-    .select("*, camp:camps(name)")
+    .select("*")
     .gte("last_message_at", sinceIso)
     .order("last_message_at", { ascending: false });
   if (usersError) throw usersError;
@@ -104,7 +118,6 @@ export async function listActiveResidents(
 
   return users.map((u) => ({
     user: u,
-    campName: (u as unknown as { camp: { name: string } | null }).camp?.name ?? null,
     newsCount: newsCountByAuthor.get(u.id) ?? 0,
   }));
 }

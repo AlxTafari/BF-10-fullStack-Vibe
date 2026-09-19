@@ -12,7 +12,7 @@ export async function handleInlineQuery(ctx: HandlerContext, iq: TelegramInlineQ
     ? text.length > NEWS_TEXT_MAX_LENGTH
       ? `${text.slice(0, NEWS_TEXT_MAX_LENGTH)}…`
       : text
-    : "начни печатать текст сплетни";
+    : "начни печатать текст вести";
 
   const results: InlineQueryResultArticle[] = [
     {

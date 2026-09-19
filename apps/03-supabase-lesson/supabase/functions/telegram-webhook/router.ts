@@ -1,5 +1,5 @@
 import { parseCommand, parseNewsArgs } from "../_shared/commands.ts";
-import { MAIN_MENU, MENU_BUTTON_COMMANDS } from "../_shared/content.ts";
+import { locationDescriptionForScene, mainMenuForScene, MENU_BUTTON_COMMANDS } from "../_shared/content.ts";
 import { createPendingUser, findUserByTgId } from "../_shared/repositories/usersRepo.ts";
 import type { TelegramCallbackQuery, TelegramMessage, TelegramUpdate } from "../_shared/telegram/types.ts";
 import type { ReactionType, UserRow } from "../_shared/types.ts";
@@ -7,16 +7,16 @@ import type { HandlerContext } from "./context.ts";
 import { logIncoming, reply } from "./logging.ts";
 import { askCamp, askName, handleCampSelected, handleNameAnswer } from "./handlers/onboarding.ts";
 import { handlePostNews } from "./handlers/news.ts";
-import { handleFreeText } from "./handlers/gossipReply.ts";
-import { handleGossipList, updateGossipList } from "./handlers/gossipList.ts";
-import { handleSwitchCamp } from "./handlers/campSwitch.ts";
+import { handleFreeText, handleLookAround } from "./handlers/freeTextReply.ts";
+import { handleChronicle, updateChronicle } from "./handlers/chronicle.ts";
 import { handleResidents } from "./handlers/residents.ts";
+import { handleHearStory, handleSitByFire, handleStandUp } from "./handlers/campfireScene.ts";
 import { handleReaction } from "./handlers/reactions.ts";
 import { handleInlineQuery } from "./handlers/inlineNews.ts";
 import { handleAbout } from "./handlers/about.ts";
 
 const NEWS_INLINE_HINT_KEYBOARD = [
-  [{ text: "✍️ Написать сплетню", switch_inline_query_current_chat: "" }],
+  [{ text: "✍️ Написать весть", switch_inline_query_current_chat: "" }],
 ];
 
 const START_COMMAND = /^\/start(@\S+)?$/i;
@@ -63,9 +63,9 @@ async function handleMessage(ctx: HandlerContext, message: TelegramMessage): Pro
     await reply(
       ctx,
       user.id,
-      `👋 Ты уже в деревне, ${user.name}. Просто пиши — сплетни сами найдутся. Или загляни в меню.`,
+      `${locationDescriptionForScene(user.scene)}\n\n👉 Выбери действие в меню.`,
       undefined,
-      MAIN_MENU,
+      mainMenuForScene(user.scene),
     );
     return;
   }
@@ -91,7 +91,7 @@ async function routeOnboardedMessage(ctx: HandlerContext, user: UserRow, text: s
         await reply(
           ctx,
           user.id,
-          '✏️ Не расслышал сплетню.\n\nНапиши так: /новость "текст"\nили анонимно: /новость анонимно "текст"\n\nЛибо жми кнопку ниже — она сама подставит @бота, останется дописать текст и выбрать, как публиковать.',
+          '✏️ Не расслышал весть.\n\nНапиши так: /новость "текст"\nили анонимно: /новость анонимно "текст"\n\nЛибо жми кнопку ниже — она сама подставит @бота, останется дописать текст и выбрать, как публиковать.',
           NEWS_INLINE_HINT_KEYBOARD,
         );
         return;
@@ -99,13 +99,14 @@ async function routeOnboardedMessage(ctx: HandlerContext, user: UserRow, text: s
       await handlePostNews(ctx, user, news);
       return;
     }
-    case "/сплетни":
-    case "/gossip":
-      await handleGossipList(ctx, user);
+    case "/хроника":
+    case "/chronicle":
+      await handleChronicle(ctx, user);
       return;
     case "/сменить_лагерь":
     case "/switch_camp":
-      await handleSwitchCamp(ctx, user);
+      // Смена лагеря временно отключена — все жители сейчас держат нейтралитет (handleSwitchCamp не удалён, см. campSwitch.ts).
+      await reply(ctx, user.id, "🏕️ Пока лагеря держат нейтралитет — переход временно недоступен.");
       return;
     case "/жители":
     case "/residents":
@@ -114,6 +115,22 @@ async function routeOnboardedMessage(ctx: HandlerContext, user: UserRow, text: s
     case "/что_здесь_происходит":
     case "/about":
       await handleAbout(ctx, user);
+      return;
+    case "/сесть_у_костра":
+    case "/sit":
+      await handleSitByFire(ctx, user);
+      return;
+    case "/встать":
+    case "/stand":
+      await handleStandUp(ctx, user);
+      return;
+    case "/история":
+    case "/story":
+      await handleHearStory(ctx, user);
+      return;
+    case "/осмотреться":
+    case "/look":
+      await handleLookAround(ctx, user);
       return;
     default:
       await reply(ctx, user.id, "🤷 Такая команда деревне неизвестна.");
@@ -138,10 +155,10 @@ async function handleCallbackQuery(ctx: HandlerContext, cq: TelegramCallbackQuer
     return;
   }
 
-  if (data.startsWith("gl:")) {
-    const index = Number(data.slice("gl:".length));
+  if (data.startsWith("ch:")) {
+    const index = Number(data.slice("ch:".length));
     await ctx.tg.answerCallbackQuery(cq.id);
-    await updateGossipList(ctx, user, messageId, index);
+    await updateChronicle(ctx, user, messageId, index);
     return;
   }
 

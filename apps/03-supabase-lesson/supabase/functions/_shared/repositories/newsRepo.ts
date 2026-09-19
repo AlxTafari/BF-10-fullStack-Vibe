@@ -40,8 +40,8 @@ export async function countNewsPostedToday(
   return count ?? 0;
 }
 
-/** Пул для нпс-ответа на любое сообщение: свой лагерь + общий филлер. */
-export async function getGossipPool(
+/** Пул историй для терминала у костра: свой лагерь + общий филлер. */
+export async function getStoryPool(
   client: SupabaseClient,
   campId: string,
 ): Promise<NewsRow[]> {

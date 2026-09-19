@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import type { Camp } from "../types.ts";
+import { NEUTRAL_CAMP_NAME } from "../content.ts";
 
 export async function getCamps(client: SupabaseClient): Promise<Camp[]> {
   // order("name") ставит "Второй" перед "Первый" по кириллическому алфавиту — сортируем по id,
@@ -11,6 +12,17 @@ export async function getCamps(client: SupabaseClient): Promise<Camp[]> {
 
 export async function getCampById(client: SupabaseClient, id: string): Promise<Camp | null> {
   const { data, error } = await client.from("camps").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+/** Дефолтный лагерь для онбординга — выбор между двумя основными лагерями временно отключён. */
+export async function getNeutralCamp(client: SupabaseClient): Promise<Camp | null> {
+  const { data, error } = await client
+    .from("camps")
+    .select("*")
+    .eq("name", NEUTRAL_CAMP_NAME)
+    .maybeSingle();
   if (error) throw error;
   return data;
 }

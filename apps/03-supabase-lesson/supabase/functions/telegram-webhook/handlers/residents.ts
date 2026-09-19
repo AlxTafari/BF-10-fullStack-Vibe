@@ -1,4 +1,3 @@
-import { campButtonLabel } from "../../_shared/content.ts";
 import { listActiveResidents } from "../../_shared/repositories/usersRepo.ts";
 import type { UserRow } from "../../_shared/types.ts";
 import type { HandlerContext } from "../context.ts";
@@ -11,10 +10,8 @@ export async function handleResidents(ctx: HandlerContext, user: UserRow): Promi
     return;
   }
 
-  const lines = residents.map((r) => {
-    const camp = r.campName ? campButtonLabel(r.campName) : "без лагеря";
-    return `• ${r.user.name ?? "безымянный"} — ${camp}, сплетен: ${r.newsCount}`;
-  });
+  // Лагерь у всех сейчас один и тот же (нейтралитет, см. GAME_DESIGN_REVIEW.md 6.1) — в списке не показываем.
+  const lines = residents.map((r) => `• ${r.user.name ?? "безымянный"} — сплетен: ${r.newsCount}`);
   await reply(
     ctx,
     user.id,

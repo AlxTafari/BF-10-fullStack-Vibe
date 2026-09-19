@@ -1,4 +1,5 @@
 export type ReactionType = "like" | "funny" | "shock" | "doubt";
+export type Scene = "village" | "campfire";
 
 export interface Camp {
   id: string;
@@ -11,6 +12,7 @@ export interface UserRow {
   name: string | null;
   camp_id: string | null;
   role: string;
+  scene: Scene;
   last_message_at: string | null;
 }
 

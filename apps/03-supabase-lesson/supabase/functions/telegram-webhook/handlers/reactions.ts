@@ -1,7 +1,7 @@
 import { upsertReaction } from "../../_shared/repositories/reactionsRepo.ts";
 import type { ReactionType, UserRow } from "../../_shared/types.ts";
 import type { HandlerContext } from "../context.ts";
-import { updateGossipList } from "./gossipList.ts";
+import { updateChronicle } from "./chronicle.ts";
 
 export async function handleReaction(
   ctx: HandlerContext,
@@ -16,5 +16,5 @@ export async function handleReaction(
     reactionType: params.reactionType,
   });
   await ctx.tg.answerCallbackQuery(callbackQueryId, "Спасибо, что поделился! 🔥");
-  await updateGossipList(ctx, user, messageId, params.index);
+  await updateChronicle(ctx, user, messageId, params.index);
 }
