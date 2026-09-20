@@ -1,5 +1,7 @@
 # Странная деревня — телеграм-бот (урок 3, Supabase)
 
+> Доп. задачи урока — Edge Functions `list-clients` и `list-messages` (см. раздел «Edge Functions» ниже).
+
 ## 1. Игра
 
 Текстовый телеграм-бот с лором заброшенной деревни. Игрок заводит персонажа (только имя, без выбора роли), попадает в стартовую локацию — деревню, откуда может пойти к костру с терминалом.
@@ -38,8 +40,8 @@
 ### Edge Functions
 
 - **telegram-webhook** — основной хендлер бота. Принимает апдейты от Telegram (проверка `X-Telegram-Bot-Api-Secret-Token`), роутит команды/callback-запросы, пишет каждое сообщение в `messages`.
-- **list-clients** — ДЗ урока: все `users`, `order by last_message_at desc`.
-- **list-messages** — ДЗ урока: все `messages`, `order by created_at desc`.
+- **list-clients** — ДЗ урока: все `users`, `order by last_message_at desc`. `https://iyedbisfzdhotfrrsxdt.supabase.co/functions/v1/list-clients`
+- **list-messages** — ДЗ урока: все `messages`, `order by created_at desc`. `https://iyedbisfzdhotfrrsxdt.supabase.co/functions/v1/list-messages`
 
 ### Слои внутри функций (`_shared`)
 
