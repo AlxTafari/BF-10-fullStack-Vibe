@@ -1,5 +1,7 @@
 # Странная деревня — телеграм-бот (урок 3, Supabase)
 
+> Бот: [@pg_village_bot](https://t.me/pg_village_bot)
+
 > Доп. задачи урока — Edge Functions `list-clients` и `list-messages` (см. раздел «Edge Functions» ниже).
 
 ## 1. Игра
