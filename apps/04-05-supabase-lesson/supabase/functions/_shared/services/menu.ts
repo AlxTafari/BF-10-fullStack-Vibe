@@ -7,8 +7,8 @@ import type { MenuCategoryRow } from "../types.ts";
 
 /** Сколько блюд показываем в результатах текстового поиска; больше — просим уточнить запрос. */
 export const SEARCH_LIMIT = 8;
-/** Блюда одной категории показываем целиком, но не бесконечно (лимит кнопок Telegram — 100). */
-export const CATEGORY_ITEMS_LIMIT = 30;
+/** Блюда одной категории: больше 10 кнопок в чате уже неудобно; превышение — подсказка про поиск. */
+export const CATEGORY_ITEMS_LIMIT = 10;
 
 export interface DishSummary {
   id: string;

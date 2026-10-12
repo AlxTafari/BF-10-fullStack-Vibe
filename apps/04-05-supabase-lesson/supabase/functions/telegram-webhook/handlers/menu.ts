@@ -1,6 +1,7 @@
 import {
   BACK_TO_CATEGORIES,
   BACK_TO_MENU,
+  CATEGORY_TRUNCATED,
   categoriesKeyboard,
   categoryPrompt,
   DISH_NOT_FOUND,
@@ -40,7 +41,8 @@ export async function handleCategory(ctx: HandlerContext, categoryId: string): P
     await handleMenuCategories(ctx);
     return;
   }
-  await reply(ctx, categoryPrompt(category.name), dishListKeyboard(result.items, BACK_TO_CATEGORIES));
+  const prompt = categoryPrompt(category.name);
+  await reply(ctx, result.hasMore ? `${prompt}\n${CATEGORY_TRUNCATED}` : prompt, dishListKeyboard(result.items, BACK_TO_CATEGORIES));
 }
 
 export async function handleDish(ctx: HandlerContext, dishId: string): Promise<void> {

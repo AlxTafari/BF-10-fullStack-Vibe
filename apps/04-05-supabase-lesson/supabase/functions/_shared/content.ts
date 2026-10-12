@@ -27,6 +27,7 @@ export const MENU_PROMPT = "Выберите, что вас интересует
 export const SEARCH_HINT = "Напишите название блюда (от 2 букв) или выберите пункт меню 👇";
 export const SEARCH_NOT_FOUND = "Не нашёл такого блюда. Попробуйте другое слово или откройте меню 👇";
 export const SEARCH_CHOOSE = "Нашлось несколько блюд, уточните:";
+export const CATEGORY_TRUNCATED = "В категории больше блюд, чем я могу показать. Остальные найдите по названию — просто напишите его.";
 export const SEARCH_TOO_MANY = "Найдено больше, чем я могу показать. Уточните запрос — вот первые:";
 
 export const FAQ_PROMPT = "Выберите вопрос:";
