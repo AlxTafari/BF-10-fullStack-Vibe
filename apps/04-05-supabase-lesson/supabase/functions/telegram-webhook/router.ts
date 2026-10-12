@@ -1,11 +1,14 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { MENU_BOOKING, MENU_FAQ, MENU_INFO, MENU_MANAGER, MENU_MENU } from "../_shared/content.ts";
+import { MENU_BOOKING, MENU_FAQ, MENU_INFO, MENU_MAIN, MENU_MANAGER, MENU_MENU } from "../_shared/content.ts";
+import { parseCallback } from "../_shared/domain/callbackData.ts";
 import { openConversation } from "../_shared/services/conversations.ts";
 import { registerUpdate } from "../_shared/services/updates.ts";
 import type { TelegramClient } from "../_shared/telegram/client.ts";
 import type { TelegramCallbackQuery, TelegramMessage, TelegramUpdate } from "../_shared/telegram/types.ts";
 import type { HandlerContext } from "./context.ts";
-import { handleFreeText, handleRestaurantInfo, handleSectionStub, handleStart } from "./handlers/mainMenu.ts";
+import { handleFaqAnswer, handleFaqList } from "./handlers/faq.ts";
+import { handleMainMenu, handleRestaurantInfo, handleSectionStub, handleStart } from "./handlers/mainMenu.ts";
+import { handleCategory, handleDish, handleMenuCategories, handleSearch } from "./handlers/menu.ts";
 import { logIncoming } from "./logging.ts";
 
 // /start и /start@bot_name (так Telegram шлёт команду в группах).
@@ -58,7 +61,8 @@ async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void
     await handleStart(ctx);
     return;
   }
-  await handleFreeText(ctx);
+  // Свободный текст — поиск блюда по названию (S02). В S03 перед ним встанет проверка активного сценария.
+  await handleSearch(ctx, text);
 }
 
 async function handleCallbackQuery(deps: Deps, cq: TelegramCallbackQuery): Promise<void> {
@@ -72,17 +76,38 @@ async function handleCallbackQuery(deps: Deps, cq: TelegramCallbackQuery): Promi
   await logIncoming(ctx, `[кнопка] ${data}`);
 
   switch (data) {
+    case MENU_MAIN:
+      await handleMainMenu(ctx);
+      return;
     case MENU_INFO:
       await handleRestaurantInfo(ctx);
       return;
-    // Меню, FAQ — S02; бронь и обращения — S03.
     case MENU_MENU:
+      await handleMenuCategories(ctx);
+      return;
     case MENU_FAQ:
+      await handleFaqList(ctx);
+      return;
+    // Бронь и обращения — S03.
     case MENU_BOOKING:
     case MENU_MANAGER:
       await handleSectionStub(ctx);
       return;
-    default:
+  }
+
+  // Кнопки с id (faq:/cat:/dish:). Битое или подделанное значение — тихо в главное меню.
+  const parsed = parseCallback(data);
+  switch (parsed?.kind) {
+    case "faq":
+      await handleFaqAnswer(ctx, parsed.id);
       return;
+    case "category":
+      await handleCategory(ctx, parsed.id);
+      return;
+    case "dish":
+      await handleDish(ctx, parsed.id);
+      return;
+    default:
+      await handleMainMenu(ctx);
   }
 }

@@ -22,3 +22,37 @@ export interface ConversationRow {
   state: Record<string, unknown>;
   last_message_at: string | null;
 }
+
+export interface FaqRow {
+  id: string;
+  question: string;
+  answer: string;
+}
+
+export interface MenuCategoryRow {
+  id: string;
+  name: string;
+}
+
+// Только гостевые поля карточки: external_id, source, restaurant_id и прочее внутреннее репозиторий не выбирает.
+export interface MenuItemRow {
+  id: string;
+  category_id: string | null;
+  name: string;
+  description: string | null;
+  price: number;
+  currency: string;
+  ingredients: string | null;
+  // null = не указано, [] = указано «аллергенов нет».
+  allergens: string[] | null;
+  portion_grams: number | null;
+  kcal_per_portion: number | null;
+  protein_per_portion: number | null;
+  fat_per_portion: number | null;
+  carbs_per_portion: number | null;
+  is_available: boolean;
+}
+
+export interface MenuItemWithCategory extends MenuItemRow {
+  category_name: string | null;
+}

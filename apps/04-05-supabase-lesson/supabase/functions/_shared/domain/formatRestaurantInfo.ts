@@ -9,7 +9,7 @@ export type RestaurantInfo = Pick<
 export const NO_DATA = "нет данных — уточните у персонала";
 
 /** Пустую или пробельную строку считаем отсутствием данных: бот не выдумывает и не оставляет пустых строк. */
-function valueOrNoData(value: string | null): string {
+export function valueOrNoData(value: string | null): string {
   return value && value.trim() !== "" ? value : NO_DATA;
 }
 

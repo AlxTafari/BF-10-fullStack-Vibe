@@ -1,5 +1,5 @@
 import { formatRestaurantInfo } from "../../_shared/domain/formatRestaurantInfo.ts";
-import { FREE_TEXT_HINT, MAIN_MENU_KEYBOARD, MENU_PROMPT, NO_RESTAURANT_TEXT, SECTION_STUB, welcomeText } from "../../_shared/content.ts";
+import { MAIN_MENU_KEYBOARD, MENU_PROMPT, NO_RESTAURANT_TEXT, SECTION_STUB, welcomeText } from "../../_shared/content.ts";
 import { getRestaurantInfo } from "../../_shared/services/restaurantInfo.ts";
 import type { HandlerContext } from "../context.ts";
 import { reply } from "../logging.ts";
@@ -10,8 +10,8 @@ export async function handleStart(ctx: HandlerContext): Promise<void> {
   await reply(ctx, `${greeting}\n\n${MENU_PROMPT}`, MAIN_MENU_KEYBOARD);
 }
 
-export async function handleFreeText(ctx: HandlerContext): Promise<void> {
-  await reply(ctx, FREE_TEXT_HINT, MAIN_MENU_KEYBOARD);
+export async function handleMainMenu(ctx: HandlerContext): Promise<void> {
+  await reply(ctx, MENU_PROMPT, MAIN_MENU_KEYBOARD);
 }
 
 export async function handleRestaurantInfo(ctx: HandlerContext): Promise<void> {
