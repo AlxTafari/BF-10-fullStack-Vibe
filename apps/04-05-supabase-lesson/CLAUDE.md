@@ -3,6 +3,10 @@
 Стек: как в `../03-supabase-lesson` (Supabase Edge Functions на Deno, Telegram, TypeScript, слои domain / repositories / telegram / handlers). Админка: Vite + React + TS, shadcn/ui, TanStack Router (не Next.js), Redux Toolkit + RTK Query, Supabase Realtime (WebSocket), курсорная пагинация чата. CI/CD — предпоследний шаг роадмапа (S08).
 
 
+## Архитектура (обязательно)
+
+Чистая архитектура, правило зависимостей — **ADR-008**. Зависимости только внутрь: обработчики → `services` → `repositories` / `domain`. Обработчик не ходит в репозиторий и не содержит бизнес-логики; `domain` не знает про Supabase и Telegram; в админке компоненты не обращаются к Supabase напрямую, только через RTK Query. Перед коммитом кода бота — `pnpm check:layers`. Без DI-контейнеров и интерфейсов «про запас».
+
 ## Документация реализации (`docs/`)
 
 **Читать до написания кода.**

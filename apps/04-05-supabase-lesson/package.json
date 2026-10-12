@@ -1,0 +1,21 @@
+{
+  "name": "04-05-lesson",
+  "version": "1.0.0",
+  "description": "Гостевой бот ресторана на Supabase (уроки 4–5)",
+  "private": true,
+  "scripts": {
+    "start": "supabase start",
+    "stop": "supabase stop",
+    "serve": "supabase functions serve --env-file .env",
+    "functions:deploy": "supabase functions deploy",
+    "db:push": "supabase db push",
+    "db:reset": "supabase db reset",
+    "db:seed:remote": "supabase db query --linked -f supabase/seed.sql",
+    "link": "supabase link",
+    "check:layers": "bash scripts/check-layers.sh"
+  },
+  "type": "commonjs",
+  "devDependencies": {
+    "supabase": "^2.117.0"
+  }
+}
