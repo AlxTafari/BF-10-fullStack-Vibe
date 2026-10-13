@@ -10,6 +10,8 @@ export interface RestaurantRow {
   phone: string | null;
   email: string | null;
   timezone: string;
+  // ISO 4217 (EUR, RUB…): одна валюта на всё меню.
+  currency: string;
   working_hours: string | null;
   // Только для сервера: гостю не отдаются (getRestaurantInfo берёт явный список полей).
   manager_chat_id: number | null;
@@ -46,7 +48,6 @@ export interface MenuItemRow {
   name: string;
   description: string | null;
   price: number;
-  currency: string;
   ingredients: string | null;
   // null = не указано, [] = указано «аллергенов нет».
   allergens: string[] | null;

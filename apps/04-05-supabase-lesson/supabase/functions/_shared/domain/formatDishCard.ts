@@ -2,11 +2,14 @@ import type { MenuItemRow } from "../types.ts";
 import { formatPrice } from "./formatPrice.ts";
 import { NO_DATA, valueOrNoData } from "./formatRestaurantInfo.ts";
 
-export type DishCardData = Pick<
-  MenuItemRow,
-  | "name" | "description" | "price" | "currency" | "ingredients" | "allergens" | "portion_grams"
-  | "kcal_per_portion" | "protein_per_portion" | "fat_per_portion" | "carbs_per_portion" | "is_available"
->;
+// Валюта не колонка блюда, а свойство ресторана: сервис подмешивает её к строке блюда.
+export type DishCardData =
+  & Pick<
+    MenuItemRow,
+    | "name" | "description" | "price" | "ingredients" | "allergens" | "portion_grams"
+    | "kcal_per_portion" | "protein_per_portion" | "fat_per_portion" | "carbs_per_portion" | "is_available"
+  >
+  & { currency: string };
 
 export const UNAVAILABLE_LABEL = "⏸ Сейчас недоступно";
 

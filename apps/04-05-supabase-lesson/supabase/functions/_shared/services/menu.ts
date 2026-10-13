@@ -69,7 +69,7 @@ export async function searchMenu(
       id: r.id,
       name: r.name,
       price: r.price,
-      currency: r.currency,
+      currency: restaurant.currency,
       isAvailable: r.is_available,
     })),
   };
@@ -82,5 +82,5 @@ export async function getDishDetails(client: SupabaseClient, input: { dishId: st
   const item = await getPublishedItem(client, restaurant.id, input.dishId);
   if (!item) return null;
   const { category_id, category_name, id: _id, ...card } = item;
-  return { card, categoryId: category_id, categoryName: category_name };
+  return { card: { ...card, currency: restaurant.currency }, categoryId: category_id, categoryName: category_name };
 }

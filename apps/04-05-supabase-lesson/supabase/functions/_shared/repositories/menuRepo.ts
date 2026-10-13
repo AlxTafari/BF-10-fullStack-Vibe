@@ -2,8 +2,9 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import type { MenuCategoryRow, MenuItemRow, MenuItemWithCategory } from "../types.ts";
 
 // Явный список колонок вместо select(*): внутренние поля (external_id, source, restaurant_id…) гостю не нужны.
+// Валюты здесь нет: она свойство ресторана (restaurants.currency), сервис подставляет её сам.
 const ITEM_COLUMNS =
-  "id, category_id, name, description, price, currency, ingredients, allergens, portion_grams, " +
+  "id, category_id, name, description, price, ingredients, allergens, portion_grams, " +
   "kcal_per_portion, protein_per_portion, fat_per_portion, carbs_per_portion, is_available";
 
 /** Категории, в которых есть хотя бы одно опубликованное блюдо (!inner отбрасывает пустые). */
