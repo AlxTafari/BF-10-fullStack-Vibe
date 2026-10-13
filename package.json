@@ -28,6 +28,15 @@
     "deploy:rest": "pnpm --filter 04-05-lesson functions:deploy",
     "link:rest": "pnpm --filter 04-05-lesson run link",
     "db:push:rest": "pnpm --filter 04-05-lesson db:push",
-    "db:reset:rest": "pnpm --filter 04-05-lesson db:reset"
-  }
+    "db:reset:rest": "pnpm --filter 04-05-lesson db:reset",
+    "check:layers:rest": "pnpm --filter 04-05-lesson check:layers",
+    "dev:admin": "pnpm --filter 04-05-admin dev",
+    "build:admin": "pnpm --filter 04-05-admin build",
+    "typecheck:admin": "pnpm --filter 04-05-admin typecheck",
+    "lint:admin": "pnpm --filter 04-05-admin lint",
+    "test:admin": "pnpm --filter 04-05-admin test",
+    "types:gen:admin": "pnpm --filter 04-05-admin types:gen",
+    "check:layers:admin": "pnpm --filter 04-05-admin check:layers"
+  },
+  "workspaces": ["apps/*", "apps/*/admin"]
 }
