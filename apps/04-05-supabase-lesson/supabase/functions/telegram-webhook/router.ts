@@ -1,18 +1,28 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { MENU_BOOKING, MENU_FAQ, MENU_INFO, MENU_MAIN, MENU_MANAGER, MENU_MENU } from "../_shared/content.ts";
-import { parseCallback } from "../_shared/domain/callbackData.ts";
+import { isFlowCallback, parseCallback, parseFlowCallback } from "../_shared/domain/callbackData.ts";
 import { openConversation } from "../_shared/services/conversations.ts";
+import { getFlowState } from "../_shared/services/flow.ts";
 import { registerUpdate } from "../_shared/services/updates.ts";
 import type { TelegramClient } from "../_shared/telegram/client.ts";
 import type { TelegramCallbackQuery, TelegramMessage, TelegramUpdate } from "../_shared/telegram/types.ts";
 import type { HandlerContext } from "./context.ts";
 import { handleFaqAnswer, handleFaqList } from "./handlers/faq.ts";
-import { handleMainMenu, handleRestaurantInfo, handleSectionStub, handleStart } from "./handlers/mainMenu.ts";
+import {
+  handleCancelCommand,
+  handleFlowAction,
+  handleFlowStart,
+  handleFlowText,
+  handleStaleFlowButton,
+  resetFlow,
+} from "./handlers/flow.ts";
+import { handleMainMenu, handleRestaurantInfo, handleStart } from "./handlers/mainMenu.ts";
 import { handleCategory, handleDish, handleMenuCategories, handleSearch } from "./handlers/menu.ts";
 import { logIncoming } from "./logging.ts";
 
 // /start и /start@bot_name (так Telegram шлёт команду в группах).
 const START_COMMAND = /^\/start(@\S+)?$/i;
+const CANCEL_COMMAND = /^\/cancel(@\S+)?$/i;
 
 interface Deps {
   client: SupabaseClient;
@@ -34,7 +44,7 @@ export async function routeUpdate(deps: Deps, update: TelegramUpdate): Promise<v
 /** Находит/создаёт диалог гостя и собирает контекст обработчиков. null — нечего обрабатывать. */
 async function buildContext(
   deps: Deps,
-  from: { id: number; first_name: string } | undefined,
+  from: { id: number; first_name: string; username?: string } | undefined,
   chatId: number | undefined,
 ): Promise<HandlerContext | null> {
   if (!from || chatId === undefined) return null;
@@ -47,7 +57,7 @@ async function buildContext(
     console.error("restaurants пуст — запусти seed / заполни ресторан");
     return null;
   }
-  return { client: deps.client, tg: deps.tg, chatId, conversation };
+  return { client: deps.client, tg: deps.tg, chatId, username: from.username ?? null, conversation };
 }
 
 async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void> {
@@ -57,11 +67,23 @@ async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void
   const text = message.text?.trim() ?? "";
   await logIncoming(ctx, text);
 
+  // /start и /cancel сбрасывают сценарий в любой момент.
   if (START_COMMAND.test(text)) {
+    await resetFlow(ctx);
     await handleStart(ctx);
     return;
   }
-  // Свободный текст — поиск блюда по названию (S02). В S03 перед ним встанет проверка активного сценария.
+  if (CANCEL_COMMAND.test(text)) {
+    await handleCancelCommand(ctx);
+    return;
+  }
+
+  // Живой сценарий забирает текст себе (имя, число гостей…); иначе свободный текст — поиск блюда (S02).
+  const flowState = getFlowState(ctx.conversation);
+  if (flowState) {
+    await handleFlowText(ctx, flowState, text);
+    return;
+  }
   await handleSearch(ctx, text);
 }
 
@@ -74,6 +96,21 @@ async function handleCallbackQuery(deps: Deps, cq: TelegramCallbackQuery): Promi
 
   const data = cq.data ?? "";
   await logIncoming(ctx, `[кнопка] ${data}`);
+
+  // Кнопки сценария: flow:<draftId>:<действие>. Чужой draftId = старая сводка в чате — ничего не меняем.
+  if (isFlowCallback(data)) {
+    const parsedFlow = parseFlowCallback(data);
+    const flowState = getFlowState(ctx.conversation);
+    if (!parsedFlow || !flowState || flowState.draftId !== parsedFlow.draftId) {
+      await handleStaleFlowButton(ctx);
+      return;
+    }
+    await handleFlowAction(ctx, flowState, parsedFlow.action);
+    return;
+  }
+
+  // Любая кнопка главного меню посреди сценария его сбрасывает; «Забронировать» и «Связаться» запускают свой.
+  if (data.startsWith("menu:")) await resetFlow(ctx);
 
   switch (data) {
     case MENU_MAIN:
@@ -88,10 +125,11 @@ async function handleCallbackQuery(deps: Deps, cq: TelegramCallbackQuery): Promi
     case MENU_FAQ:
       await handleFaqList(ctx);
       return;
-    // Бронь и обращения — S03.
     case MENU_BOOKING:
+      await handleFlowStart(ctx, "booking");
+      return;
     case MENU_MANAGER:
-      await handleSectionStub(ctx);
+      await handleFlowStart(ctx, "guest_request");
       return;
   }
 

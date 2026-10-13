@@ -7,21 +7,24 @@ delete from menu_items      where restaurant_id = '00000000-0000-0000-0000-00000
 delete from menu_categories where restaurant_id = '00000000-0000-0000-0000-00000000a001';
 delete from faq_entries     where restaurant_id = '00000000-0000-0000-0000-00000000a001';
 
-insert into restaurants (id, name, description, address, phone, timezone, working_hours) values (
+insert into restaurants (id, name, description, address, phone, timezone, working_hours, opening_hours) values (
     '00000000-0000-0000-0000-00000000a001',
     'Ресторан Лавраки',
     'Греческий ресторан в Салониках: свежая рыба на гриле и вина северной Греции.',
     'Салоники, квартал Лададика, ул. Мициали, 7',
     '+30 2310 000 000',
     'Europe/Athens',
-    'Вт–Вс 13:00–00:00, понедельник — выходной'
+    'Вт–Вс 13:00–00:00, понедельник — выходной',
+    -- 1 = понедельник (выходной — ключа нет); close 24:00 = полночь. manager_chat_id в seed не трогаем (личный id, см. README).
+    '{"2":{"open":"13:00","close":"24:00"},"3":{"open":"13:00","close":"24:00"},"4":{"open":"13:00","close":"24:00"},"5":{"open":"13:00","close":"24:00"},"6":{"open":"13:00","close":"24:00"},"7":{"open":"13:00","close":"24:00"}}'::jsonb
 ) on conflict (id) do update set
     name = excluded.name,
     description = excluded.description,
     address = excluded.address,
     phone = excluded.phone,
     timezone = excluded.timezone,
-    working_hours = excluded.working_hours;
+    working_hours = excluded.working_hours,
+    opening_hours = excluded.opening_hours;
 
 insert into faq_entries (restaurant_id, question, answer, sort_order) values
     ('00000000-0000-0000-0000-00000000a001', 'Есть ли парковка?', 'Своей парковки нет, рядом платная парковка на ул. Эгнатия.', 1),

@@ -6,5 +6,7 @@ export interface HandlerContext {
   client: SupabaseClient;
   tg: TelegramClient;
   chatId: number;
+  /** @username гостя из текущего апдейта (без @), если он у него есть. */
+  username: string | null;
   conversation: ConversationRow;
 }

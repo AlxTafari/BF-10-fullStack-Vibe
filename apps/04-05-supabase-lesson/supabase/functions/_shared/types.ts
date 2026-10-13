@@ -1,3 +1,5 @@
+import type { OpeningHours } from "./domain/bookingRules.ts";
+
 export type MessageDirection = "in" | "out";
 
 export interface RestaurantRow {
@@ -9,6 +11,9 @@ export interface RestaurantRow {
   email: string | null;
   timezone: string;
   working_hours: string | null;
+  // Только для сервера: гостю не отдаются (getRestaurantInfo берёт явный список полей).
+  manager_chat_id: number | null;
+  opening_hours: OpeningHours | null;
 }
 
 export interface ConversationRow {
@@ -18,7 +23,7 @@ export interface ConversationRow {
   external_user_id: number;
   chat_id: number;
   display_name: string | null;
-  // Состояние пошагового сценария; в S01 не используется (машина состояний — S03).
+  // Состояние пошагового сценария (бронь, обращение), {} = нет сценария. Разбирается через parseFlowState.
   state: Record<string, unknown>;
   last_message_at: string | null;
 }
@@ -56,3 +61,42 @@ export interface MenuItemRow {
 export interface MenuItemWithCategory extends MenuItemRow {
   category_name: string | null;
 }
+
+export interface BookingRequestRow {
+  id: string;
+  restaurant_id: string;
+  conversation_id: string | null;
+  guest_name: string;
+  contact: string;
+  booking_at: string;
+  guests_count: number;
+  comment: string | null;
+  status: "pending" | "confirmed" | "declined" | "cancelled";
+  idempotency_key: string;
+  manager_notified_at: string | null;
+  created_at: string;
+}
+
+export interface GuestRequestRow {
+  id: string;
+  restaurant_id: string;
+  conversation_id: string | null;
+  kind: "feedback" | "complaint" | "manager_request";
+  text: string;
+  contact: string | null;
+  status: "new" | "in_progress" | "resolved";
+  idempotency_key: string;
+  manager_notified_at: string | null;
+  created_at: string;
+}
+
+/** Поля заявки на бронь, которые задаёт сервис; остальное (id, status, даты) ставит БД. */
+export type NewBookingRequest = Pick<
+  BookingRequestRow,
+  "restaurant_id" | "conversation_id" | "guest_name" | "contact" | "booking_at" | "guests_count" | "comment" | "idempotency_key"
+>;
+
+export type NewGuestRequest = Pick<
+  GuestRequestRow,
+  "restaurant_id" | "conversation_id" | "kind" | "text" | "contact" | "idempotency_key"
+>;

@@ -21,3 +21,23 @@ export function parseCallback(data: string): ParsedCallback | null {
   const kind = (Object.keys(PREFIX) as CallbackKind[]).find((k) => PREFIX[k] === prefix);
   return kind ? { kind, id } : null;
 }
+
+// ---------------------------------------------------------------- кнопки пошаговых сценариев (S03)
+// Формат flow:<draftId>:<действие>. draftId привязывает кнопку к конкретной заявке: старые сводки
+// остаются в чате кликабельными, и без этой привязки их нажатие повлияло бы на новую заявку.
+// Действие — «ключ» или «ключ=значение» (d=2026-10-20); двоеточий в нём нет. Влезает в 64 байта: 5 + 36 + 1 + ≤22.
+const FLOW_PREFIX = "flow";
+
+export function buildFlowCallback(draftId: string, action: string): string {
+  return `${FLOW_PREFIX}:${draftId}:${action}`;
+}
+
+export function parseFlowCallback(data: string): { draftId: string; action: string } | null {
+  const [prefix, draftId, action, ...rest] = data.split(":");
+  if (prefix !== FLOW_PREFIX || rest.length > 0 || !draftId || !action || !UUID.test(draftId)) return null;
+  return { draftId, action };
+}
+
+export function isFlowCallback(data: string): boolean {
+  return data.startsWith(`${FLOW_PREFIX}:`);
+}

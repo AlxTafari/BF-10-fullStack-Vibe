@@ -41,3 +41,13 @@ export async function touchConversation(client: SupabaseClient, conversationId: 
     .eq("id", conversationId);
   if (error) throw error;
 }
+
+/** Сохраняет состояние сценария целиком (`{}` = сценария нет). */
+export async function setConversationState(
+  client: SupabaseClient,
+  conversationId: string,
+  state: Record<string, unknown>,
+): Promise<void> {
+  const { error } = await client.from("conversations").update({ state }).eq("id", conversationId);
+  if (error) throw error;
+}
