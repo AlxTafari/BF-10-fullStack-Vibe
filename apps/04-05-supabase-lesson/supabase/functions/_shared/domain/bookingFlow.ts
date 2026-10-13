@@ -14,6 +14,7 @@ import {
 import { validateComment, validateContact, validateGuests, validateName } from "./fieldValidation.ts";
 import {
   type AdvanceResult,
+  type BookingChange,
   type BookingData,
   type BookingState,
   type BookingStep,
@@ -42,7 +43,7 @@ function screenFor(state: BookingState, env: FlowEnv): FlowScreen {
     case "hour":
       return { screen: "ask_hour", date: data.date!, period: data.period!, hours: availableHours(data.date!, data.period!, be) };
     case "guests":
-      return { screen: "ask_guests" };
+      return { screen: "ask_guests", keepGuests: state.change?.guests };
     case "name":
       return { screen: "ask_name" };
     case "contact":
@@ -50,7 +51,7 @@ function screenFor(state: BookingState, env: FlowEnv): FlowScreen {
     case "comment":
       return { screen: "ask_comment" };
     case "confirm":
-      return { screen: "confirm", flow: "booking", summary: buildBookingSummary(data) };
+      return { screen: "confirm", flow: "booking", summary: buildBookingSummary(data), isChange: !!state.change };
   }
 }
 
@@ -73,6 +74,8 @@ function isConsistent(state: BookingState): boolean {
 
 /** Порядок шагов и поля, которые каждый шаг заполняет: по ним «Назад» стирает данные шага и всех следующих. */
 const STEP_ORDER: BookingStep[] = ["date", "period", "hour", "guests", "name", "contact", "comment", "confirm"];
+/** При изменении брони имя, контакт и комментарий не спрашиваем. */
+const CHANGE_STEP_ORDER: BookingStep[] = ["date", "period", "hour", "guests", "confirm"];
 const STEP_FIELDS: Partial<Record<BookingStep, (keyof BookingData)[]>> = {
   date: ["date"],
   period: ["period"],
@@ -85,24 +88,27 @@ const STEP_FIELDS: Partial<Record<BookingStep, (keyof BookingData)[]>> = {
 
 /** Шаг назад: данные текущего и предыдущего шагов стираются, гость вводит их заново. null — назад некуда. */
 function goBack(state: BookingState): BookingState | null {
-  const prevIndex = STEP_ORDER.indexOf(state.step) - 1;
+  const order = state.change ? CHANGE_STEP_ORDER : STEP_ORDER;
+  const prevIndex = order.indexOf(state.step) - 1;
   if (prevIndex < 0) return null;
-  const step = STEP_ORDER[prevIndex];
+  const step = order[prevIndex];
   const data = { ...state.data };
   // Стираем поля шага, на который вернулись, и всех после него.
-  for (const s of STEP_ORDER.slice(prevIndex)) {
+  for (const s of order.slice(prevIndex)) {
     for (const field of STEP_FIELDS[s] ?? []) delete data[field];
   }
   return { ...state, step, data };
 }
 
-export function startBooking(env: FlowEnv): AdvanceResult {
+/** Новая бронь; с `change` — изменение существующей: имя, контакт и комментарий уже известны. */
+export function startBooking(env: FlowEnv, change?: BookingChange): AdvanceResult {
   const state: BookingState = {
     flow: "booking",
     step: "date",
     draftId: env.newDraftId(),
-    data: {},
+    data: change ? { name: change.name, contact: change.contact, comment: change.comment } : {},
     touchedAt: env.now.toISOString(),
+    ...(change ? { change } : {}),
   };
   return { state, reply: { screen: screenFor(state, env) } };
 }
@@ -111,21 +117,27 @@ export function startBooking(env: FlowEnv): AdvanceResult {
  * Пока гость выбирал, время шло: слот на выбранную дату/период мог исчезнуть (сегодня стало слишком поздно).
  * Откатываем на шаг, где выбор снова возможен. null — всё в порядке.
  */
+/** Данные, которые сценарий изменения знает с самого начала. */
+function prefilled(state: BookingState): BookingData {
+  const c = state.change;
+  return c ? { name: c.name, contact: c.contact, comment: c.comment } : {};
+}
+
 function rollbackIfSlotGone(state: BookingState, env: FlowEnv): BookingState | null {
   const be = bookingEnv(env);
   const { date, period } = state.data;
   if ((state.step === "period" || state.step === "hour") && availablePeriods(date!, be).length === 0) {
-    return { ...state, step: "date", data: {} };
+    return { ...state, step: "date", data: prefilled(state) };
   }
   if (state.step === "hour" && availableHours(date!, period!, be).length === 0) {
-    return { ...state, step: "period", data: { date } };
+    return { ...state, step: "period", data: { ...prefilled(state), date } };
   }
   return null;
 }
 
 export function advanceBooking(state: BookingState, input: FlowInput, env: FlowEnv): AdvanceResult {
-  if (input.type === "action" && input.action === "restart") return startBooking(env);
-  if (!isConsistent(state)) return startBooking(env);
+  if (input.type === "action" && input.action === "restart") return startBooking(env, state.change);
+  if (!isConsistent(state)) return startBooking(env, state.change);
 
   const touched: BookingState = { ...state, touchedAt: env.now.toISOString() };
   const stay = (error: FlowErrorCode): AdvanceResult => ({
@@ -171,11 +183,13 @@ export function advanceBooking(state: BookingState, input: FlowInput, env: FlowE
     }
     case "guests": {
       if (input.type === "action") {
+        // «Оставить N» — только в режиме изменения.
+        if (input.action === "keep" && state.change) return next("confirm", { guests: state.change.guests });
         // Больше 20 гостей — не к боту, а к менеджеру: переключаем в сценарий обращения.
         return input.action === "to_manager" ? startGuestRequest(env, "manager_request") : stay("unavailable");
       }
       const v = validateGuests(input.text);
-      if (v.ok) return next("name", { guests: v.value });
+      if (v.ok) return next(state.change ? "confirm" : "name", { guests: v.value });
       // Состояние то же, но экран другой: предлагаем кнопку перехода к менеджеру.
       if (v.error === "guests_too_many") return { state: touched, reply: { screen: { screen: "too_many_guests" } } };
       return stay(v.error);

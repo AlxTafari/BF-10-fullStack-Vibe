@@ -17,6 +17,7 @@ import { findGuestRequestByKey } from "../repositories/guestRequestsRepo.ts";
 import { getRestaurant } from "../repositories/restaurantsRepo.ts";
 import type { BookingRequestRow, ConversationRow, GuestRequestRow } from "../types.ts";
 import { type BookingFieldErrors, createBookingRequest } from "./bookingRequests.ts";
+import { getMyBooking } from "./myRequests.ts";
 import { createGuestRequest, type GuestRequestFieldErrors } from "./guestRequests.ts";
 
 /**
@@ -60,6 +61,31 @@ export async function startFlow(
 ): Promise<AdvanceResult> {
   const env = await loadEnv(client, username);
   const result = flow === "booking" ? startBooking(env) : startGuestRequest(env);
+  await saveFlowState(client, conversationId, result.state);
+  return result;
+}
+
+/**
+ * Начинает сценарий изменения существующей брони. null — менять нельзя (не своя, не активна,
+ * уже изменение или изменение уже запрошено): вызывающий покажет карточку заново.
+ */
+export async function startChangeFlow(
+  client: SupabaseClient,
+  conversationId: string,
+  bookingId: string,
+  username: string | null,
+): Promise<AdvanceResult | null> {
+  const env = await loadEnv(client, username);
+  const details = await getMyBooking(client, conversationId, bookingId, env.now);
+  if (!details?.canChange) return null;
+  const { booking } = details;
+  const result = startBooking(env, {
+    replacesId: booking.id,
+    guests: booking.guests_count,
+    name: booking.guest_name,
+    contact: booking.contact,
+    comment: booking.comment,
+  });
   await saveFlowState(client, conversationId, result.state);
   return result;
 }
@@ -112,6 +138,7 @@ export async function submitFlow(
       name: d.name ?? "",
       contact: d.contact ?? "",
       comment: d.comment ?? null,
+      replacesId: (state as BookingState).change?.replacesId,
     });
     if (!r.ok) return r;
     const claimed = await clearStateIfDraft(client, conversationId, state.draftId);

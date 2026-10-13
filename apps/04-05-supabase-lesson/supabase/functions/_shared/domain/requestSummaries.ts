@@ -58,11 +58,28 @@ export interface GuestRequestNotificationInput {
   created_at: string;
 }
 
-export function formatBookingNotification(r: BookingNotificationInput, timeZone: string): string {
+/** Исходная бронь, которую гость просит изменить (для строки «Было»). */
+export interface ReplacedBookingInfo {
+  booking_at: string;
+  guests_count: number;
+}
+
+export function formatBookingNotification(
+  r: BookingNotificationInput,
+  timeZone: string,
+  replaces?: ReplacedBookingInfo | null,
+): string {
+  const header = replaces
+    ? "✏️ Запрос на изменение брони (ожидает подтверждения; пока не подтверждено, действует прежняя бронь)"
+    : "📅 Новая заявка на бронь (ожидает подтверждения)";
+  const was = replaces
+    ? [`Было: ${formatLocalDateTime(new Date(replaces.booking_at), timeZone)}, гостей: ${replaces.guests_count}`]
+    : [];
   return [
-    "📅 Новая заявка на бронь (ожидает подтверждения)",
+    header,
     "",
-    `Когда: ${formatLocalDateTime(new Date(r.booking_at), timeZone)}`,
+    ...was,
+    `${replaces ? "Станет" : "Когда"}: ${formatLocalDateTime(new Date(r.booking_at), timeZone)}`,
     `Гостей: ${r.guests_count}`,
     `Имя: ${r.guest_name}`,
     `Контакт: ${r.contact}`,
@@ -81,6 +98,25 @@ export function formatGuestRequestNotification(r: GuestRequestNotificationInput,
     "",
     `Контакт: ${r.contact ?? "не указан"}`,
     `Создано: ${formatLocalDateTime(new Date(r.created_at), timeZone)}`,
+    `ID: ${r.id}`,
+  ].join("\n");
+}
+
+/** Гость отменил бронь (или запрос на изменение). */
+export function formatBookingCancelledNotification(
+  r: BookingNotificationInput & { replaces_id: string | null },
+  timeZone: string,
+  alsoCancelledChange: boolean,
+): string {
+  return [
+    r.replaces_id ? "❌ Гость отменил запрос на изменение брони (прежняя бронь остаётся в силе)" : "❌ Гость отменил бронь",
+    "",
+    `Когда: ${formatLocalDateTime(new Date(r.booking_at), timeZone)}`,
+    `Гостей: ${r.guests_count}`,
+    `Имя: ${r.guest_name}`,
+    `Контакт: ${r.contact}`,
+    ...(alsoCancelledChange ? ["", "Ожидавший изменение запрос тоже отменён."] : []),
+    "",
     `ID: ${r.id}`,
   ].join("\n");
 }

@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { formatBookingNotification, formatGuestRequestNotification } from "../domain/requestSummaries.ts";
-import { markBookingNotified } from "../repositories/bookingRequestsRepo.ts";
+import {
+  formatBookingCancelledNotification,
+  formatBookingNotification,
+  formatGuestRequestNotification,
+} from "../domain/requestSummaries.ts";
+import { findBookingById, markBookingNotified } from "../repositories/bookingRequestsRepo.ts";
 import { markGuestRequestNotified } from "../repositories/guestRequestsRepo.ts";
 import { getRestaurant } from "../repositories/restaurantsRepo.ts";
 import type { BookingRequestRow, GuestRequestRow } from "../types.ts";
@@ -10,6 +14,8 @@ export type SendText = (chatId: number, text: string) => Promise<void>;
 
 export type ManagerNotification =
   | { kind: "booking"; request: BookingRequestRow }
+  /** Гость отменил бронь или запрос на изменение. manager_notified_at не трогаем: он про создание заявки. */
+  | { kind: "booking_cancelled"; request: BookingRequestRow; alsoCancelledChange: boolean }
   | { kind: "guest_request"; request: GuestRequestRow };
 
 export type NotifyResult = "sent" | "disabled" | "failed";
@@ -31,13 +37,26 @@ export async function notifyManager(
       return "disabled";
     }
 
-    const text = notification.kind === "booking"
-      ? formatBookingNotification(notification.request, restaurant.timezone)
-      : formatGuestRequestNotification(notification.request, restaurant.timezone);
+    let text: string;
+    switch (notification.kind) {
+      case "booking": {
+        // Для запроса на изменение менеджеру нужно видеть, что было.
+        const { replaces_id } = notification.request;
+        const original = replaces_id ? await findBookingById(client, replaces_id) : null;
+        text = formatBookingNotification(notification.request, restaurant.timezone, original);
+        break;
+      }
+      case "booking_cancelled":
+        text = formatBookingCancelledNotification(notification.request, restaurant.timezone, notification.alsoCancelledChange);
+        break;
+      case "guest_request":
+        text = formatGuestRequestNotification(notification.request, restaurant.timezone);
+        break;
+    }
     await send(restaurant.manager_chat_id, text);
 
     if (notification.kind === "booking") await markBookingNotified(client, notification.request.id);
-    else await markGuestRequestNotified(client, notification.request.id);
+    else if (notification.kind === "guest_request") await markGuestRequestNotified(client, notification.request.id);
     return "sent";
   } catch (error) {
     console.error(`уведомление менеджера о заявке ${notification.request.id} не доставлено:`, error);

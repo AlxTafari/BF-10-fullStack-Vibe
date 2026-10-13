@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { buildCallback, buildFlowCallback, parseCallback, parseFlowCallback } from "./callbackData.ts";
+import { buildBookingCallback, buildCallback, buildFlowCallback, parseBookingCallback, parseCallback, parseFlowCallback } from "./callbackData.ts";
 
 const ID = "00000000-0000-0000-0000-00000000b001";
 
@@ -34,4 +34,12 @@ Deno.test("flow-кнопка: битые и поддельные данные �
   assertEquals(parseFlowCallback("flow:11111111-2222-3333-4444-555555555555"), null);
   assertEquals(parseFlowCallback("flow:11111111-2222-3333-4444-555555555555:a:b"), null);
   assertEquals(parseFlowCallback("faq:11111111-2222-3333-4444-555555555555"), null);
+});
+
+Deno.test("bk-кнопки: открыть карточку и действия", () => {
+  assertEquals(parseBookingCallback(buildBookingCallback(ID)), { id: ID, action: "view" });
+  assertEquals(parseBookingCallback(buildBookingCallback(ID, "xy")), { id: ID, action: "xy" });
+  assertEquals(parseBookingCallback(`bk:${ID}:drop`), null);
+  assertEquals(parseBookingCallback("bk:не-uuid"), null);
+  assertEquals(parseBookingCallback(`flow:${ID}:send`), null);
 });

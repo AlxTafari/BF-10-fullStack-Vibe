@@ -73,6 +73,8 @@ export interface BookingRequestRow {
   comment: string | null;
   status: "pending" | "confirmed" | "declined" | "cancelled";
   idempotency_key: string;
+  /** Заявка-изменение указывает на исходную бронь; у обычной брони null. */
+  replaces_id: string | null;
   manager_notified_at: string | null;
   created_at: string;
 }
@@ -91,10 +93,12 @@ export interface GuestRequestRow {
 }
 
 /** Поля заявки на бронь, которые задаёт сервис; остальное (id, status, даты) ставит БД. */
-export type NewBookingRequest = Pick<
-  BookingRequestRow,
-  "restaurant_id" | "conversation_id" | "guest_name" | "contact" | "booking_at" | "guests_count" | "comment" | "idempotency_key"
->;
+export type NewBookingRequest =
+  & Pick<
+    BookingRequestRow,
+    "restaurant_id" | "conversation_id" | "guest_name" | "contact" | "booking_at" | "guests_count" | "comment" | "idempotency_key"
+  >
+  & { replaces_id?: string | null };
 
 export type NewGuestRequest = Pick<
   GuestRequestRow,

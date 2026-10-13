@@ -36,10 +36,21 @@ interface FlowBase {
   touchedAt: string;
 }
 
+/** Изменение существующей брони: сценарий начинается с её данных. Снимок неизменен — «Начать заново» возвращается к нему. */
+export interface BookingChange {
+  replacesId: string;
+  guests: number;
+  name: string;
+  contact: string;
+  comment: string | null;
+}
+
 export interface BookingState extends FlowBase {
   flow: "booking";
   step: BookingStep;
   data: BookingData;
+  /** Есть только у сценария «изменить бронь»: имя, контакт и комментарий не спрашиваем, берём из исходной. */
+  change?: BookingChange;
 }
 
 export interface GuestRequestState extends FlowBase {
@@ -73,14 +84,15 @@ export type FlowScreen =
   | { screen: "no_dates" }
   | { screen: "ask_period"; date: string; periods: PeriodId[] }
   | { screen: "ask_hour"; date: string; period: PeriodId; hours: number[] }
-  | { screen: "ask_guests" }
+  /** keepGuests — в режиме изменения: кнопка «Оставить N». */
+  | { screen: "ask_guests"; keepGuests?: number }
   | { screen: "too_many_guests" }
   | { screen: "ask_name" }
   | { screen: "ask_contact"; canUseUsername: boolean; optional: boolean }
   | { screen: "ask_comment" }
   | { screen: "ask_kind" }
   | { screen: "ask_text"; kind: GuestRequestKind }
-  | { screen: "confirm"; flow: FlowState["flow"]; summary: string }
+  | { screen: "confirm"; flow: FlowState["flow"]; summary: string; isChange?: boolean }
   /** Гость подтвердил: вызывающий создаёт заявку из state.data. Состояние не меняется. */
   | { screen: "submit" };
 

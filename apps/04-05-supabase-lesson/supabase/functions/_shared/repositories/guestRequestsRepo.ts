@@ -20,3 +20,18 @@ export async function markGuestRequestNotified(client: SupabaseClient, id: strin
     .eq("id", id);
   if (error) throw error;
 }
+
+export async function listGuestRequestsForConversation(
+  client: SupabaseClient,
+  conversationId: string,
+  limit: number,
+): Promise<GuestRequestRow[]> {
+  const { data, error } = await client
+    .from("guest_requests")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as GuestRequestRow[];
+}

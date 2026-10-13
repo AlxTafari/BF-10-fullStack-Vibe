@@ -1,7 +1,8 @@
 import { BOOKING_PERIODS, type PeriodId } from "./domain/bookingRules.ts";
-import { buildCallback, buildFlowCallback } from "./domain/callbackData.ts";
+import { buildBookingCallback, buildCallback, buildFlowCallback } from "./domain/callbackData.ts";
 import { COMMENT_MAX, GUESTS_MAX, REQUEST_TEXT_MAX } from "./domain/fieldValidation.ts";
 import type { FlowErrorCode, FlowReply, GuestRequestKind } from "./domain/flowState.ts";
+import { formatBookingShort, formatGuestRequestLine, type MyBooking, type MyGuestRequest } from "./domain/myRequests.ts";
 import { addDays } from "./domain/zonedTime.ts";
 import { formatDate, GUEST_REQUEST_KIND_LABEL } from "./domain/requestSummaries.ts";
 import { formatPrice } from "./domain/formatPrice.ts";
@@ -16,6 +17,7 @@ export const MENU_MENU = "menu:menu";
 export const MENU_FAQ = "menu:faq";
 export const MENU_BOOKING = "menu:booking";
 export const MENU_MANAGER = "menu:manager";
+export const MENU_MY = "menu:my";
 export const MENU_MAIN = "menu:main";
 
 export const MAIN_MENU_KEYBOARD: InlineKeyboard = [
@@ -24,6 +26,7 @@ export const MAIN_MENU_KEYBOARD: InlineKeyboard = [
   [{ text: "❓ Частые вопросы", callback_data: MENU_FAQ }],
   [{ text: "📅 Забронировать стол", callback_data: MENU_BOOKING }],
   [{ text: "💬 Связаться с менеджером", callback_data: MENU_MANAGER }],
+  [{ text: "📋 Мои заявки", callback_data: MENU_MY }],
 ];
 
 export const MENU_PROMPT = "Выберите, что вас интересует:";
@@ -196,7 +199,10 @@ export function renderFlowReply(draftId: string, reply: FlowReply): { text: stri
     }
     case "ask_guests":
       text = `Сколько будет гостей? Напишите число от 1 до ${GUESTS_MAX}.`;
-      keyboard = [cancel];
+      keyboard = [
+        ...(screen.keepGuests !== undefined ? [[btn(`Оставить ${screen.keepGuests}`, "keep")]] : []),
+        cancel,
+      ];
       break;
     case "too_many_guests":
       text = `Для компаний больше ${GUESTS_MAX} человек свяжитесь с менеджером — он всё обсудит.`;
@@ -234,7 +240,9 @@ export function renderFlowReply(draftId: string, reply: FlowReply): { text: stri
       keyboard = [cancel];
       break;
     case "confirm":
-      text = screen.flow === "booking"
+      text = screen.isChange
+        ? `Проверьте изменение:\n\n${screen.summary}\n\nЭто запрос на изменение. Текущая бронь остаётся в силе, пока менеджер не подтвердит новую.`
+        : screen.flow === "booking"
         ? `Проверьте заявку:\n\n${screen.summary}\n\nЭто заявка, а не подтверждённая бронь: ответ даст менеджер.`
         : `Проверьте обращение:\n\n${screen.summary}`;
       keyboard = [[btn("✅ Отправить", "send")], [btn("🔄 Начать заново", "restart")], cancel];
@@ -250,3 +258,52 @@ export function renderFlowReply(draftId: string, reply: FlowReply): { text: stri
 export function retrySubmitKeyboard(draftId: string): InlineKeyboard {
   return [[{ text: "✅ Отправить", callback_data: buildFlowCallback(draftId, "send") }]];
 }
+
+// ---------------------------------------------------------------- «Мои заявки»
+
+export const MY_REQUESTS_EMPTY = "У вас пока нет заявок.";
+export const MY_REQUESTS_TITLE = "📋 Ваши заявки";
+export const MY_BOOKING_NOT_FOUND = "Заявка не найдена.";
+export const CANCEL_CONFIRM_TEXT = "Отменить эту бронь? Менеджер получит уведомление.";
+export const CANCEL_DONE = "Бронь отменена. Менеджер уведомлён.";
+export const CANCEL_CHANGE_DONE = "Запрос на изменение отменён. Прежняя бронь остаётся в силе.";
+export const CANCEL_NOT_POSSIBLE = "Эту заявку уже нельзя отменить: она отменена, прошла или обработана.";
+export const CHANGE_NOT_POSSIBLE = "Эту бронь сейчас нельзя изменить: она не активна или изменение уже запрошено.";
+export const CHANGE_SENT = "Запрос на изменение передан. Текущая бронь остаётся в силе, пока менеджер не подтвердит новую.";
+export const CHANGE_REJECTED = "Не удалось отправить изменение: бронь уже нельзя менять или изменение уже запрошено.";
+
+const BACK_TO_MY_LIST = { text: "← К списку", callback_data: MENU_MY };
+
+export function renderMyRequests(
+  bookings: MyBooking[],
+  requests: MyGuestRequest[],
+  timeZone: string,
+): { text: string; keyboard: InlineKeyboard } {
+  if (bookings.length === 0 && requests.length === 0) return { text: MY_REQUESTS_EMPTY, keyboard: HOME_KEYBOARD };
+  const parts = [MY_REQUESTS_TITLE];
+  if (requests.length > 0) parts.push("", "Обращения:", ...requests.map(formatGuestRequestLine));
+  if (bookings.length > 0) parts.push("", "Брони — выберите, чтобы открыть:");
+  return {
+    text: parts.join("\n"),
+    keyboard: [
+      ...bookings.map((b) => [{ text: formatBookingShort(b, timeZone), callback_data: buildBookingCallback(b.id) }]),
+      [HOME_BUTTON],
+    ],
+  };
+}
+
+export function bookingCardKeyboard(bookingId: string, canChange: boolean, canCancel: boolean): InlineKeyboard {
+  const actions = [];
+  if (canChange) actions.push({ text: "✏️ Изменить", callback_data: buildBookingCallback(bookingId, "ch") });
+  if (canCancel) actions.push({ text: "❌ Отменить", callback_data: buildBookingCallback(bookingId, "x") });
+  return [...(actions.length > 0 ? [actions] : []), [BACK_TO_MY_LIST], [HOME_BUTTON]];
+}
+
+export function cancelConfirmKeyboard(bookingId: string): InlineKeyboard {
+  return [
+    [{ text: "Да, отменить", callback_data: buildBookingCallback(bookingId, "xy") }],
+    [{ text: "Нет", callback_data: buildBookingCallback(bookingId) }],
+  ];
+}
+
+export const MY_LIST_AND_HOME_KEYBOARD: InlineKeyboard = [[BACK_TO_MY_LIST], [HOME_BUTTON]];

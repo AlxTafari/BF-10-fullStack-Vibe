@@ -1,5 +1,7 @@
 import {
   BOOKING_SENT,
+  CHANGE_REJECTED,
+  CHANGE_SENT,
   FLOW_CANCELLED,
   FLOW_STALE,
   GUEST_REQUEST_SENT,
@@ -15,7 +17,7 @@ import { notifyManager } from "../../_shared/services/managerNotification.ts";
 import type { HandlerContext } from "../context.ts";
 import { reply } from "../logging.ts";
 
-async function showScreen(ctx: HandlerContext, draftId: string, flowReply: FlowReply): Promise<void> {
+export async function showFlowScreen(ctx: HandlerContext, draftId: string, flowReply: FlowReply): Promise<void> {
   const { text, keyboard } = renderFlowReply(draftId, flowReply);
   await reply(ctx, text, keyboard);
 }
@@ -23,7 +25,7 @@ async function showScreen(ctx: HandlerContext, draftId: string, flowReply: FlowR
 /** «📅 Забронировать» и «💬 Связаться с менеджером»: новый сценарий вместо прежнего. */
 export async function handleFlowStart(ctx: HandlerContext, flow: FlowState["flow"]): Promise<void> {
   const { state, reply: flowReply } = await startFlow(ctx.client, ctx.conversation.id, flow, ctx.username);
-  await showScreen(ctx, state.draftId, flowReply);
+  await showFlowScreen(ctx, state.draftId, flowReply);
 }
 
 /** Сбрасывает сценарий, если он был. Для /start, /cancel и кнопок главного меню. */
@@ -65,7 +67,7 @@ async function advance(ctx: HandlerContext, state: FlowState, input: FlowInput):
     await submit(ctx, result.state);
     return;
   }
-  await showScreen(ctx, result.state.draftId, result.reply);
+  await showFlowScreen(ctx, result.state.draftId, result.reply);
 }
 
 /** Гость нажал «Отправить»: создать заявку, ответить, затем уведомить менеджера. */
@@ -80,6 +82,13 @@ async function submit(ctx: HandlerContext, state: FlowState): Promise<void> {
     return;
   }
 
+  if (!result.ok && "replaces" in result.errors) {
+    // Исходную бронь уже нельзя менять (отменена, прошла, изменение уже запрошено): сценарий закрываем.
+    await cancelFlow(ctx.client, ctx.conversation.id);
+    await reply(ctx, CHANGE_REJECTED, MAIN_MENU_KEYBOARD);
+    return;
+  }
+
   if (!result.ok) {
     // Данные перестали проходить проверку (например, час прошёл, пока гость думал): начинаем заново.
     await reply(ctx, SUBMIT_REJECTED);
@@ -87,7 +96,11 @@ async function submit(ctx: HandlerContext, state: FlowState): Promise<void> {
     return;
   }
 
-  const sentText = result.kind === "booking" ? BOOKING_SENT : GUEST_REQUEST_SENT;
+  const sentText = result.kind === "guest_request"
+    ? GUEST_REQUEST_SENT
+    : result.request.replaces_id
+    ? CHANGE_SENT
+    : BOOKING_SENT;
   try {
     // Отвечает только тот, кто первым закрыл черновик: при двойном тапе остальные обработки молчат,
     // а то гость получит серию одинаковых «заявка передана».

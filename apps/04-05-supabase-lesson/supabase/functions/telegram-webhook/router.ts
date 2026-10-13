@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { MENU_BOOKING, MENU_FAQ, MENU_INFO, MENU_MAIN, MENU_MANAGER, MENU_MENU } from "../_shared/content.ts";
-import { isFlowCallback, parseCallback, parseFlowCallback } from "../_shared/domain/callbackData.ts";
+import { MENU_BOOKING, MENU_FAQ, MENU_INFO, MENU_MAIN, MENU_MANAGER, MENU_MENU, MENU_MY } from "../_shared/content.ts";
+import { isFlowCallback, parseBookingCallback, parseCallback, parseFlowCallback } from "../_shared/domain/callbackData.ts";
 import { openConversation } from "../_shared/services/conversations.ts";
 import { getFlowState } from "../_shared/services/flow.ts";
 import { registerUpdate } from "../_shared/services/updates.ts";
@@ -16,6 +16,7 @@ import {
   handleStaleFlowButton,
   resetFlow,
 } from "./handlers/flow.ts";
+import { handleBookingAction, handleMyRequests } from "./handlers/myRequests.ts";
 import { handleMainMenu, handleRestaurantInfo, handleStart } from "./handlers/mainMenu.ts";
 import { handleCategory, handleDish, handleMenuCategories, handleSearch } from "./handlers/menu.ts";
 import { logIncoming } from "./logging.ts";
@@ -131,6 +132,16 @@ async function handleCallbackQuery(deps: Deps, cq: TelegramCallbackQuery): Promi
     case MENU_MANAGER:
       await handleFlowStart(ctx, "guest_request");
       return;
+    case MENU_MY:
+      await handleMyRequests(ctx);
+      return;
+  }
+
+  // «Мои заявки»: bk:<id>[:действие]. Принадлежность заявки гостю проверяет сервис.
+  const booking = parseBookingCallback(data);
+  if (booking) {
+    await handleBookingAction(ctx, booking.id, booking.action);
+    return;
   }
 
   // Кнопки с id (faq:/cat:/dish:). Битое или подделанное значение — тихо в главное меню.

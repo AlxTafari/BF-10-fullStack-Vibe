@@ -10,6 +10,7 @@ import { createBookingRequest } from "./bookingRequests.ts";
 import type { BookingState } from "../domain/flowState.ts";
 import { createGuestRequest } from "./guestRequests.ts";
 import { isDraftSubmitted, saveFlowState, submitFlow } from "./flow.ts";
+import { cancelMyBooking, getMyBooking, listMyRequests } from "./myRequests.ts";
 
 const enabled = !!Deno.env.get("SUPABASE_URL") && !!Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -98,6 +99,78 @@ Deno.test({
       assertEquals(taps.filter((t) => t.ok && t.claimed).length, 1); // ответ гостю — один
       assertEquals(new Set(taps.map((t) => t.ok && t.request.id)).size, 1);
       assertEquals(await isDraftSubmitted(client, conversation.id, draftId), true);
+
+      // 2б. «Мои заявки»: изменение, отмена, чужие заявки.
+      const original = first.request;
+      const change = (draft: string) =>
+        createBookingRequest(client, {
+          conversationId: conversation.id,
+          draftId: draft,
+          date,
+          time: "20:00",
+          guests: 5,
+          name: "Тест",
+          contact: "@integration_test",
+          comment: null,
+          replacesId: original.id,
+        });
+      const ch1 = await change(crypto.randomUUID());
+      assert(ch1.ok && ch1.created);
+      assertEquals(ch1.request.replaces_id, original.id);
+      assertEquals(ch1.request.status, "pending");
+      // Второе изменение той же брони — отказ (и из сервиса, и из уникального индекса при гонке).
+      const ch2 = await change(crypto.randomUUID());
+      assert(!ch2.ok);
+      assertEquals(ch2.errors.replaces, "change_exists");
+      const raceResults = await Promise.all([change(crypto.randomUUID()), change(crypto.randomUUID())]);
+      assert(raceResults.every((r) => !r.ok));
+      // Изменение изменения запрещено.
+      const chOfChange = await createBookingRequest(client, {
+        conversationId: conversation.id,
+        draftId: crypto.randomUUID(),
+        date,
+        time: "20:00",
+        guests: 2,
+        name: "Тест",
+        contact: "@integration_test",
+        comment: null,
+        replacesId: ch1.request.id,
+      });
+      assert(!chOfChange.ok);
+      assertEquals(chOfChange.errors.replaces, "not_changeable");
+
+      const details = await getMyBooking(client, conversation.id, original.id);
+      assertEquals(details?.pendingChange?.id, ch1.request.id);
+      assertEquals(details?.canChange, false);
+      assertEquals(details?.canCancel, true);
+
+      // Чужой диалог не видит заявку и не может её отменить.
+      const stranger = await upsertConversation(client, {
+        restaurantId: restaurant.id,
+        externalUserId: -Math.floor(Math.random() * 1_000_000_000) - 1,
+        chatId: -2,
+        displayName: "integration-stranger",
+      });
+      try {
+        assertEquals(await getMyBooking(client, stranger.id, original.id), null);
+        assertEquals((await cancelMyBooking(client, stranger.id, original.id)).ok, false);
+        assertEquals((await listMyRequests(client, stranger.id)).bookings.length, 0);
+      } finally {
+        await client.from("conversations").delete().eq("id", stranger.id);
+      }
+
+      // Отмена: ровно один успех при тройном тапе; изменение отменяется вместе с бронью.
+      const cancels = await Promise.all([1, 2, 3].map(() => cancelMyBooking(client, conversation.id, original.id)));
+      assertEquals(cancels.filter((c) => c.ok).length, 1);
+      const done = cancels.find((c) => c.ok);
+      assert(done && done.ok);
+      assertEquals(done.alsoCancelledChange, true);
+      const afterCancel = await getMyBooking(client, conversation.id, original.id);
+      assertEquals(afterCancel?.booking.status, "cancelled");
+      assertEquals(afterCancel?.canCancel, false);
+      assertEquals(afterCancel?.pendingChange, null);
+      const changeAfter = await getMyBooking(client, conversation.id, ch1.request.id);
+      assertEquals(changeAfter?.booking.status, "cancelled");
 
       // 3. Невалидные данные заявку не создают.
       const bad = await createBookingRequest(client, {

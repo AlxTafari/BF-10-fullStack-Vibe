@@ -174,3 +174,50 @@ Deno.test("«Назад» со сводки стирает комментари�
   assertEquals(first.state.step, "date");
   assertEquals(first.reply.error, "unavailable");
 });
+
+const CHANGE = { replacesId: "22222222-2222-3333-4444-555555555555", guests: 4, name: "Анна", contact: "@anna_k", comment: "у окна" };
+
+Deno.test("изменение брони: дата → период → час → гости → сводка, без имени/контакта/комментария", () => {
+  let r = startBooking(env(), CHANGE);
+  assertEquals((r.state as BookingState).data, { name: "Анна", contact: "@anna_k", comment: "у окна" });
+  r = run(r, [act("d=2026-10-21"), act("p=dinner"), act("h=20")]);
+  assertEquals(r.reply.screen, { screen: "ask_guests", keepGuests: 4 });
+
+  r = advanceBooking(r.state as BookingState, text("5"), env());
+  assertEquals(r.state.step, "confirm");
+  assertEquals((r.state as BookingState).data.guests, 5);
+  assertEquals((r.reply.screen as { isChange?: boolean }).isChange, true);
+  assertEquals((r.state as BookingState).change?.replacesId, CHANGE.replacesId);
+});
+
+Deno.test("изменение: «Оставить N» сохраняет число гостей исходной брони", () => {
+  const r = run(startBooking(env(), CHANGE), [act("d=2026-10-21"), act("p=dinner"), act("h=20"), act("keep")]);
+  assertEquals(r.state.step, "confirm");
+  assertEquals((r.state as BookingState).data.guests, 4);
+});
+
+Deno.test("«Оставить N» вне режима изменения не работает", () => {
+  const r = run(startBooking(env()), [...toGuests, act("keep")]);
+  assertEquals(r.reply.error, "unavailable");
+  assertEquals(r.state.step, "guests");
+});
+
+Deno.test("изменение: «Назад» со сводки идёт к гостям (имя и контакт пропущены), «Начать заново» не теряет режим", () => {
+  const atConfirm = run(startBooking(env(), CHANGE), [act("d=2026-10-21"), act("p=dinner"), act("h=20"), act("keep")]);
+  const back = advanceBooking(atConfirm.state as BookingState, act("back"), env());
+  assertEquals(back.state.step, "guests");
+
+  const restarted = advanceBooking(atConfirm.state as BookingState, act("restart"), env());
+  assertEquals(restarted.state.step, "date");
+  assertEquals((restarted.state as BookingState).change, CHANGE);
+  assertEquals((restarted.state as BookingState).data.name, "Анна");
+});
+
+Deno.test("изменение: слот пропал → откат на выбор даты, предзаполненные данные сохраняются", () => {
+  const e1 = env();
+  const atHour = run(startBooking(e1, CHANGE), [act("d=2026-10-13"), act("p=dinner")], e1);
+  const late = env({ now: new Date("2026-10-13T19:45:00Z") });
+  const r = advanceBooking(atHour.state as BookingState, act("h=19"), late);
+  assertEquals(r.state.step, "date");
+  assertEquals((r.state as BookingState).data, { name: "Анна", contact: "@anna_k", comment: "у окна" });
+});

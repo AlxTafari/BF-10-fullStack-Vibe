@@ -41,3 +41,19 @@ export function parseFlowCallback(data: string): { draftId: string; action: stri
 export function isFlowCallback(data: string): boolean {
   return data.startsWith(`${FLOW_PREFIX}:`);
 }
+
+// ---------------------------------------------------------------- «Мои заявки» (S03)
+// bk:<id> — открыть карточку брони, bk:<id>:<действие> — действие над ней (x — спросить об отмене, xy — отменить, ch — изменить).
+// id проверяется как uuid, но принадлежность заявки гостю проверяет сервис: callback_data подделывается.
+export type BookingAction = "view" | "x" | "xy" | "ch";
+const BOOKING_ACTIONS: BookingAction[] = ["view", "x", "xy", "ch"];
+
+export function buildBookingCallback(id: string, action: BookingAction = "view"): string {
+  return action === "view" ? `bk:${id}` : `bk:${id}:${action}`;
+}
+
+export function parseBookingCallback(data: string): { id: string; action: BookingAction } | null {
+  const [prefix, id, action = "view", ...rest] = data.split(":");
+  if (prefix !== "bk" || rest.length > 0 || !id || !UUID.test(id)) return null;
+  return BOOKING_ACTIONS.includes(action as BookingAction) ? { id, action: action as BookingAction } : null;
+}
