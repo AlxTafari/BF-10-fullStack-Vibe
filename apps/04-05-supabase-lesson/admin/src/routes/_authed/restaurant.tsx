@@ -1,3 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { RestaurantScreen } from "@/features/restaurant/RestaurantScreen";
 
-export const Route = createFileRoute("/_authed/restaurant")({ component: () => <p>restaurant — скоро</p> });
+export const Route = createFileRoute("/_authed/restaurant")({ component: RestaurantScreen });
