@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src",
+    "lint": "eslint src tests",
     "test": "vitest run",
     "types:gen": "supabase gen types typescript --linked > src/api/database.types.ts",
     "check:layers": "bash scripts/check-layers.sh"
