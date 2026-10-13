@@ -1,3 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { MenuScreen } from "@/features/menu/MenuScreen";
 
-export const Route = createFileRoute("/_authed/menu")({ component: () => <p>menu — скоро</p> });
+// Layout без <Outlet>: выбранную категорию MenuScreen читает из параметров дочернего маршрута.
+export const Route = createFileRoute("/_authed/menu")({ component: MenuScreen });

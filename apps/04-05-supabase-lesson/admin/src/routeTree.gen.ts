@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedFaqRouteImport } from './routes/_authed/faq'
 import { Route as AuthedMenuRouteImport } from './routes/_authed/menu'
 import { Route as AuthedRestaurantRouteImport } from './routes/_authed/restaurant'
+import { Route as AuthedMenuCategoryIdRouteImport } from './routes/_authed/menu.$categoryId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -45,20 +46,27 @@ const AuthedRestaurantRoute = AuthedRestaurantRouteImport.update({
   path: '/restaurant',
   getParentRoute: () => AuthedRoute,
 } as any)
+const AuthedMenuCategoryIdRoute = AuthedMenuCategoryIdRouteImport.update({
+  id: '/$categoryId',
+  path: '/$categoryId',
+  getParentRoute: () => AuthedMenuRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/faq': typeof AuthedFaqRoute
-  '/menu': typeof AuthedMenuRoute
+  '/menu': typeof AuthedMenuRouteWithChildren
   '/restaurant': typeof AuthedRestaurantRoute
+  '/menu/$categoryId': typeof AuthedMenuCategoryIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/faq': typeof AuthedFaqRoute
-  '/menu': typeof AuthedMenuRoute
+  '/menu': typeof AuthedMenuRouteWithChildren
   '/restaurant': typeof AuthedRestaurantRoute
+  '/menu/$categoryId': typeof AuthedMenuCategoryIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -66,14 +74,16 @@ export interface FileRoutesById {
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
   '/_authed/faq': typeof AuthedFaqRoute
-  '/_authed/menu': typeof AuthedMenuRoute
+  '/_authed/menu': typeof AuthedMenuRouteWithChildren
   '/_authed/restaurant': typeof AuthedRestaurantRoute
+  '/_authed/menu/$categoryId': typeof AuthedMenuCategoryIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/faq' | '/menu' | '/restaurant'
+  fullPaths:
+    '/' | '/login' | '/faq' | '/menu' | '/restaurant' | '/menu/$categoryId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/faq' | '/menu' | '/restaurant'
+  to: '/' | '/login' | '/faq' | '/menu' | '/restaurant' | '/menu/$categoryId'
   id:
     | '__root__'
     | '/'
@@ -82,6 +92,7 @@ export interface FileRouteTypes {
     | '/_authed/faq'
     | '/_authed/menu'
     | '/_authed/restaurant'
+    | '/_authed/menu/$categoryId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -134,18 +145,37 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedRestaurantRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/menu/$categoryId': {
+      id: '/_authed/menu/$categoryId'
+      path: '/$categoryId'
+      fullPath: '/menu/$categoryId'
+      preLoaderRoute: typeof AuthedMenuCategoryIdRouteImport
+      parentRoute: typeof AuthedMenuRoute
+    }
   }
 }
 
+interface AuthedMenuRouteChildren {
+  AuthedMenuCategoryIdRoute: typeof AuthedMenuCategoryIdRoute
+}
+
+const AuthedMenuRouteChildren: AuthedMenuRouteChildren = {
+  AuthedMenuCategoryIdRoute: AuthedMenuCategoryIdRoute,
+}
+
+const AuthedMenuRouteWithChildren = AuthedMenuRoute._addFileChildren(
+  AuthedMenuRouteChildren,
+)
+
 interface AuthedRouteChildren {
   AuthedFaqRoute: typeof AuthedFaqRoute
-  AuthedMenuRoute: typeof AuthedMenuRoute
+  AuthedMenuRoute: typeof AuthedMenuRouteWithChildren
   AuthedRestaurantRoute: typeof AuthedRestaurantRoute
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedFaqRoute: AuthedFaqRoute,
-  AuthedMenuRoute: AuthedMenuRoute,
+  AuthedMenuRoute: AuthedMenuRouteWithChildren,
   AuthedRestaurantRoute: AuthedRestaurantRoute,
 }
 
