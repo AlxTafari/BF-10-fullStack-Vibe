@@ -102,7 +102,7 @@ async function handleCallbackQuery(deps: Deps, cq: TelegramCallbackQuery): Promi
     const parsedFlow = parseFlowCallback(data);
     const flowState = getFlowState(ctx.conversation);
     if (!parsedFlow || !flowState || flowState.draftId !== parsedFlow.draftId) {
-      await handleStaleFlowButton(ctx);
+      await handleStaleFlowButton(ctx, parsedFlow?.draftId ?? null, parsedFlow?.action ?? null);
       return;
     }
     await handleFlowAction(ctx, flowState, parsedFlow.action);

@@ -10,7 +10,7 @@ import {
   SUBMIT_REJECTED,
 } from "../../_shared/content.ts";
 import type { FlowInput, FlowReply, FlowState } from "../../_shared/domain/flowState.ts";
-import { cancelFlow, continueFlow, startFlow, submitFlow } from "../../_shared/services/flow.ts";
+import { cancelFlow, continueFlow, isDraftSubmitted, startFlow, submitFlow } from "../../_shared/services/flow.ts";
 import { notifyManager } from "../../_shared/services/managerNotification.ts";
 import type { HandlerContext } from "../context.ts";
 import { reply } from "../logging.ts";
@@ -37,8 +37,12 @@ export async function handleCancelCommand(ctx: HandlerContext): Promise<void> {
   await reply(ctx, FLOW_CANCELLED, MAIN_MENU_KEYBOARD);
 }
 
-/** Кнопка старой сводки или сценарий уже закрыт/истёк: ничего не меняем. */
-export async function handleStaleFlowButton(ctx: HandlerContext): Promise<void> {
+/**
+ * Кнопка старой сводки или сценарий уже закрыт/истёк: ничего не меняем.
+ * «Отправить» по уже отправленной заявке — тишина: ответ «заявка передана» гость уже получил.
+ */
+export async function handleStaleFlowButton(ctx: HandlerContext, draftId: string | null, action: string | null): Promise<void> {
+  if (draftId && action === "send" && (await isDraftSubmitted(ctx.client, ctx.conversation.id, draftId))) return;
   await reply(ctx, FLOW_STALE, MAIN_MENU_KEYBOARD);
 }
 
@@ -85,7 +89,9 @@ async function submit(ctx: HandlerContext, state: FlowState): Promise<void> {
 
   const sentText = result.kind === "booking" ? BOOKING_SENT : GUEST_REQUEST_SENT;
   try {
-    await reply(ctx, sentText, MAIN_MENU_KEYBOARD);
+    // Отвечает только тот, кто первым закрыл черновик: при двойном тапе остальные обработки молчат,
+    // а то гость получит серию одинаковых «заявка передана».
+    if (result.claimed) await reply(ctx, sentText, MAIN_MENU_KEYBOARD);
   } finally {
     // Только для только что созданной заявки: повтор не должен слать менеджеру второе уведомление.
     // finally — чтобы сбой ответа гостю не лишил менеджера уведомления.

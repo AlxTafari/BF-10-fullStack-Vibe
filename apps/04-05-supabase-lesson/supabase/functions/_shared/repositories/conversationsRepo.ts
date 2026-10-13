@@ -51,3 +51,23 @@ export async function setConversationState(
   const { error } = await client.from("conversations").update({ state }).eq("id", conversationId);
   if (error) throw error;
 }
+
+/**
+ * Сбрасывает состояние, только если оно ещё принадлежит этому черновику. true — сбросили мы,
+ * false — уже сбросил кто-то другой (параллельный тап по той же кнопке). Один UPDATE с условием атомарен,
+ * поэтому из нескольких одновременных обработчиков true получит ровно один.
+ */
+export async function clearStateIfDraft(
+  client: SupabaseClient,
+  conversationId: string,
+  draftId: string,
+): Promise<boolean> {
+  const { data, error } = await client
+    .from("conversations")
+    .update({ state: {} })
+    .eq("id", conversationId)
+    .eq("state->>draftId", draftId)
+    .select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}

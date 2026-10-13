@@ -11,7 +11,9 @@ import {
   parseFlowState,
 } from "../domain/flowState.ts";
 import { advanceGuestRequest, startGuestRequest } from "../domain/guestRequestFlow.ts";
-import { setConversationState } from "../repositories/conversationsRepo.ts";
+import { clearStateIfDraft, setConversationState } from "../repositories/conversationsRepo.ts";
+import { findBookingRequestByKey } from "../repositories/bookingRequestsRepo.ts";
+import { findGuestRequestByKey } from "../repositories/guestRequestsRepo.ts";
 import { getRestaurant } from "../repositories/restaurantsRepo.ts";
 import type { BookingRequestRow, ConversationRow, GuestRequestRow } from "../types.ts";
 import { type BookingFieldErrors, createBookingRequest } from "./bookingRequests.ts";
@@ -80,9 +82,13 @@ export async function continueFlow(
 
 // ---------------------------------------------------------------- отправка заявки
 
+/**
+ * `created` — эта обработка создала заявку (уведомить менеджера). `claimed` — эта обработка первой
+ * закрыла черновик (ответить гостю). При двойном тапе гость получает ровно один ответ, а не серию.
+ */
 export type SubmitResult =
-  | { ok: true; kind: "booking"; request: BookingRequestRow; created: boolean }
-  | { ok: true; kind: "guest_request"; request: GuestRequestRow; created: boolean }
+  | { ok: true; kind: "booking"; request: BookingRequestRow; created: boolean; claimed: boolean }
+  | { ok: true; kind: "guest_request"; request: GuestRequestRow; created: boolean; claimed: boolean }
   | { ok: false; errors: BookingFieldErrors | GuestRequestFieldErrors };
 
 /**
@@ -108,8 +114,8 @@ export async function submitFlow(
       comment: d.comment ?? null,
     });
     if (!r.ok) return r;
-    await cancelFlow(client, conversationId);
-    return { ok: true, kind: "booking", request: r.request, created: r.created };
+    const claimed = await clearStateIfDraft(client, conversationId, state.draftId);
+    return { ok: true, kind: "booking", request: r.request, created: r.created, claimed };
   }
 
   const d = (state as GuestRequestState).data;
@@ -122,6 +128,19 @@ export async function submitFlow(
     contact: d.contact ?? null,
   });
   if (!r.ok) return r;
-  await cancelFlow(client, conversationId);
-  return { ok: true, kind: "guest_request", request: r.request, created: r.created };
+  const claimed = await clearStateIfDraft(client, conversationId, state.draftId);
+  return { ok: true, kind: "guest_request", request: r.request, created: r.created, claimed };
+}
+
+/**
+ * Черновик уже отправлен? Нужно для кнопок старой сводки: «Отправить» после успешной отправки
+ * (двойной тап, повторное нажатие) бот молча игнорирует, а не пишет «заявка неактуальна» —
+ * иначе гость решит, что отправка не удалась, и создаст заявку заново.
+ */
+export async function isDraftSubmitted(client: SupabaseClient, conversationId: string, draftId: string): Promise<boolean> {
+  const [booking, guest] = await Promise.all([
+    findBookingRequestByKey(client, `booking:${conversationId}:${draftId}`),
+    findGuestRequestByKey(client, `guest:${conversationId}:${draftId}`),
+  ]);
+  return booking !== null || guest !== null;
 }

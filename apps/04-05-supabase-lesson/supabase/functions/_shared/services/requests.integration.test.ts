@@ -7,7 +7,9 @@ import { upsertConversation } from "../repositories/conversationsRepo.ts";
 import { getRestaurant } from "../repositories/restaurantsRepo.ts";
 import { createServiceClient } from "../supabaseClient.ts";
 import { createBookingRequest } from "./bookingRequests.ts";
+import type { BookingState } from "../domain/flowState.ts";
 import { createGuestRequest } from "./guestRequests.ts";
+import { isDraftSubmitted, saveFlowState, submitFlow } from "./flow.ts";
 
 const enabled = !!Deno.env.get("SUPABASE_URL") && !!Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -73,6 +75,29 @@ Deno.test({
       assertEquals(createdCount, 1);
       const ids = new Set(results.map((r) => r.ok && r.request.id));
       assertEquals(ids.size, 1);
+
+      // 2а. Двойной тап «Отправить» через сценарий: заявка одна, гостю отвечает ровно один обработчик,
+      // и после отправки повторное нажатие распознаётся как «уже отправлено» (бот молчит).
+      const draftId = crypto.randomUUID();
+      const state: BookingState = {
+        flow: "booking",
+        step: "confirm",
+        draftId,
+        touchedAt: new Date().toISOString(),
+        data: { date, period: "dinner", time: "19:00", guests: 2, name: "Тест", contact: "@integration_test", comment: null },
+      };
+      await saveFlowState(client, conversation.id, state);
+      assertEquals(await isDraftSubmitted(client, conversation.id, draftId), false);
+      const taps = await Promise.all([
+        submitFlow(client, conversation.id, state),
+        submitFlow(client, conversation.id, state),
+        submitFlow(client, conversation.id, state),
+      ]);
+      assert(taps.every((t) => t.ok));
+      assertEquals(taps.filter((t) => t.ok && t.created).length, 1); // уведомление менеджеру — одно
+      assertEquals(taps.filter((t) => t.ok && t.claimed).length, 1); // ответ гостю — один
+      assertEquals(new Set(taps.map((t) => t.ok && t.request.id)).size, 1);
+      assertEquals(await isDraftSubmitted(client, conversation.id, draftId), true);
 
       // 3. Невалидные данные заявку не создают.
       const bad = await createBookingRequest(client, {
