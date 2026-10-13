@@ -55,3 +55,20 @@
 - Отступление от спеки: `store` не в контексте роутера — guard'у хватает `hasSession()`; добавим, если понадобится loader'ам.
 - `.env.local` заполнен anon-ключом через `supabase projects api-keys` (service_role не читался из вывода и не сохранялся).
 **Осталось:** завести менеджера (Dashboard + SQL), ручной прогон шагов 1–4 приёмки; шаг 6 — экраны.
+
+## 2026-10-14 — Конец сессии: передача в чистую сессию (S04 на шаге 6)
+**Сделано (коммиты `8ea2056`, `2b394b4`, `de8a294`):** шаги 1–5 плана — миграции и RLS, бот под `restaurants.currency`, каркас `admin/`, вход и guard.
+**Состояние БД (dev):** накатаны `admin_auth` и `restaurant_currency`. **`drop_item_currency` НЕ накатана** — файл в репозитории; накатывать только после деплоя бота (`pnpm deploy:rest`) и проверки меню/карточки/поиска в Telegram, затем `pnpm db:push:rest`, `pnpm db:seed:remote`, перегенерировать типы (`pnpm types:gen:admin`; сейчас в `database.types.ts` ещё есть `menu_items.currency`).
+**Не проверено руками:** вход в админку в браузере. Менеджера в БД нет — завести: Dashboard → Authentication → Users → Add user (Auto Confirm), затем SQL `insert into restaurant_managers (user_id, restaurant_id) values ('<uid>', '00000000-0000-0000-0000-00000000a001');`. Для шага 3 приёмки — второй пользователь без строки. Запуск: `pnpm dev:admin`.
+**Что где:** `admin/src/{api,domain,features,routes,components/ui}`; слои — `pnpm check:layers:admin`; проверки — `pnpm typecheck:admin`, `lint:admin`, `test:admin` (6 тестов), `build:admin`. Заглушки `/menu`, `/faq`, `/restaurant` лежат в `routes/_authed/`. `admin/.env.local` заполнен anon-ключом (в git не попадает).
+**Решения и отступления от спеки:**
+- `admin/` собран вручную, не `shadcn init`; vitest 5 (vitest 3 тянул vite 7 и ломал типы); плагин роутера стоит до `react()`.
+- `store` не в контексте роутера (guard — через `hasSession()`); сетевая ошибка входа показывается отдельным текстом, неверные данные — общим «Неверный email или пароль».
+- `deno.lock` не коммитится (STATE §4), остаётся untracked.
+**Инцидент окружения:** посреди сессии пропали Command Line Tools (`/Library/Developer/CommandLineTools`), git перестал работать; причина не установлена (не deno: он в `~/.deno`). Починено ручной установкой CLT. `supabase db push` из IDE-терминала падал с `TransportError`, из моей оболочки `--dry-run` проходил — причина среды запуска, не проекта.
+**Осталось (по порядку):**
+1. Шаг 6а — экран «Ресторан» (`domain/openingHours.ts` с тестами, `restaurantSchema`, форма, `getRestaurant`/`updateRestaurant`, теги `Restaurant`).
+2. Шаг 6б — FAQ: `SortableList` на `@dnd-kit` (клавиатурный сенсор), `domain/reorder.ts` с тестами, оптимистичная перестановка с откатом, очередь «одна перестановка за раз».
+3. Шаг 6в — «Меню»: категории + блюда, форма блюда (`domain` схема: `null` ≠ `0`, три состояния аллергенов), оптимистичные переключатели `is_published`/`is_available`, удаление категории с числом блюд.
+4. Общие состояния экранов (skeleton / ошибка + «Повторить» / пусто), тихий refresh при 401.
+5. Шаг 7 — интеграционный RLS-тест Vitest (service role в локальном `.env`, не в `VITE_*`), README: как завести менеджера, как узнать `manager_chat_id`; приёмка по §5 спеки. Спринт не закрывать без явного «да».
