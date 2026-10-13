@@ -81,7 +81,7 @@ export function FaqScreen() {
       </div>
 
       {isLoading && <Skeleton className="h-48 w-full" />}
-      {error && <LoadError message={error.message ?? "Неизвестная ошибка"} onRetry={refetch} />}
+      {error && <LoadError error={error} onRetry={refetch} />}
       {entries && entries.length === 0 && (
         <p className="text-sm text-muted-foreground">Пока нет вопросов — добавьте первый.</p>
       )}

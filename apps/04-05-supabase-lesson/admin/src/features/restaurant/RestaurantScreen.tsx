@@ -15,7 +15,7 @@ export function RestaurantScreen() {
     <section className="space-y-4">
       <h1 className="text-xl font-semibold">Ресторан</h1>
       {isLoading && <Skeleton className="h-96 w-full max-w-2xl" />}
-      {error && <LoadError message={error.message ?? "Неизвестная ошибка"} onRetry={refetch} />}
+      {error && <LoadError error={error} onRetry={refetch} />}
       {data && restaurantId && <RestaurantForm restaurantId={restaurantId} restaurant={data} />}
     </section>
   );

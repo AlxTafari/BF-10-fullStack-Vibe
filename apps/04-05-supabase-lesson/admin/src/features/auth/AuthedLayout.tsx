@@ -4,6 +4,7 @@ import { useGetMeQuery, useSignOutMutation } from "@/api/authApi";
 import { useAppSelector } from "@/api/store";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LoadError } from "@/features/common/LoadError";
 import { NoAccess } from "./NoAccess";
 
 const NAV = [
@@ -33,9 +34,8 @@ export function AuthedLayout() {
   }
   if (me.error) {
     return (
-      <div className="mx-auto mt-24 max-w-sm space-y-4 text-center">
-        <p className="text-sm text-destructive">Не удалось загрузить данные: {me.error.message}</p>
-        <Button onClick={() => me.refetch()}>Повторить</Button>
+      <div className="mx-auto mt-24 max-w-sm text-center">
+        <LoadError error={me.error} onRetry={me.refetch} />
       </div>
     );
   }

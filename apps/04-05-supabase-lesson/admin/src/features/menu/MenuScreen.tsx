@@ -29,7 +29,7 @@ export function MenuScreen() {
     restaurant.refetch();
   }
 
-  if (error) return <LoadError message={error.message ?? "Неизвестная ошибка"} onRetry={retry} />;
+  if (error) return <LoadError error={error} onRetry={retry} />;
   if (loading || !categories.data || !items.data || !restaurant.data || !restaurantId) {
     return <Skeleton className="h-64 w-full" />;
   }
