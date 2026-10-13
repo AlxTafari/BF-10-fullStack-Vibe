@@ -292,7 +292,6 @@ export type Database = {
           carbs_per_portion: number | null
           category_id: string | null
           created_at: string
-          currency: string
           description: string | null
           external_id: string | null
           fat_per_portion: number | null
@@ -316,7 +315,6 @@ export type Database = {
           carbs_per_portion?: number | null
           category_id?: string | null
           created_at?: string
-          currency?: string
           description?: string | null
           external_id?: string | null
           fat_per_portion?: number | null
@@ -340,7 +338,6 @@ export type Database = {
           carbs_per_portion?: number | null
           category_id?: string | null
           created_at?: string
-          currency?: string
           description?: string | null
           external_id?: string | null
           fat_per_portion?: number | null
