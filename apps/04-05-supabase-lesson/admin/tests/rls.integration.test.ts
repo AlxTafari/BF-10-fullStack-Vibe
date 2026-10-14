@@ -20,9 +20,11 @@ const AUTH_OPTS = { auth: { persistSession: false, autoRefreshToken: false } } a
 
 /** Справочные таблицы: менеджер ресторана работает с ними через политики. */
 const CATALOG_TABLES = ["restaurants", "faq_entries", "menu_categories", "menu_items"] as const;
-/** Таблицы без политик для authenticated (заявки и чат — S05/S06) + членство (читается только своя строка). */
-const CLOSED_TABLES = ["conversations", "messages", "booking_requests", "guest_requests", "processed_updates"] as const;
-const ALL_TABLES = [...CATALOG_TABLES, "restaurant_managers", ...CLOSED_TABLES];
+/** Таблицы без политик для authenticated (чат — S06) + членство (читается только своя строка). */
+const CLOSED_TABLES = ["conversations", "messages", "processed_updates"] as const;
+/** Заявки: менеджер читает свои (S05), писать не может — статусы только через RPC. */
+const REQUEST_TABLES = ["booking_requests", "guest_requests"] as const;
+const ALL_TABLES = [...CATALOG_TABLES, "restaurant_managers", ...CLOSED_TABLES, ...REQUEST_TABLES];
 
 const runId = Math.random().toString(36).slice(2, 8);
 const TEST_UPDATE_ID = -Math.floor(Math.random() * 1_000_000_000) - 1; // отрицательный: не пересекается с настоящими
@@ -222,18 +224,36 @@ describe.skipIf(!enabled)("RLS: справочники и закрытые та�
       expect(rows[0]?.restaurant_id).toBe(A.restaurantId);
     });
 
-    it("не видит заявки и чат (политик нет до S05/S06), хотя данные в них есть", async () => {
+    it("не видит чат (политик нет до S06), хотя данные в нём есть", async () => {
       for (const table of CLOSED_TABLES) expect(await visibleRows(managerA, table)).toBe(0);
       // данные действительно существуют — иначе проверка выше ничего бы не доказывала
-      expect(await visibleRows(service, "booking_requests")).toBeGreaterThan(0);
       expect(await visibleRows(service, "conversations")).toBeGreaterThan(0);
     });
 
-    it("не может писать в закрытые таблицы", async () => {
+    it("видит заявки только своего ресторана, не чужого", async () => {
+      for (const table of REQUEST_TABLES) {
+        const rows = must(await managerA.from(table).select("restaurant_id"), table);
+        expect(rows.length).toBeGreaterThan(0);
+        expect(rows.every((r) => r.restaurant_id === A.restaurantId)).toBe(true);
+      }
+    });
+
+    it("не меняет статус заявки напрямую (только через RPC)", async () => {
+      await managerA.from("booking_requests").update({ status: "confirmed" }).eq("restaurant_id", A.restaurantId);
+      await managerA.from("guest_requests").update({ status: "resolved" }).eq("restaurant_id", A.restaurantId);
+      const booking = must(await service.from("booking_requests").select("status").eq("restaurant_id", A.restaurantId), "booking");
+      const guest = must(await service.from("guest_requests").select("status").eq("restaurant_id", A.restaurantId), "guest");
+      expect(booking.every((r) => r.status === "pending")).toBe(true);
+      expect(guest.every((r) => r.status === "new")).toBe(true);
+    });
+
+    it("не может создавать и удалять заявки", async () => {
       const res = await managerA
         .from("guest_requests")
         .insert({ restaurant_id: A.restaurantId, kind: "feedback", text: "x", idempotency_key: `rls-x-${runId}` });
       expect(res.error).not.toBeNull();
+      await managerA.from("booking_requests").delete().eq("restaurant_id", A.restaurantId);
+      expect(await visibleRows(service, "booking_requests")).toBeGreaterThan(0);
     });
 
     it("полный CRUD по своим справочникам", async () => {
