@@ -69,3 +69,35 @@ export function allowedBookingActions(booking: BookingActionInput, now: Date): B
       return [];
   }
 }
+
+// ---------------------------------------------------------------- метки «уведомление не доставлено»
+
+/** Меньше этого срока отсутствие отметки — нормальная задержка отправки, а не сбой. */
+export const NOTIFY_GRACE_MS = 60_000;
+
+const olderThanGrace = (iso: string, now: Date) => now.getTime() - Date.parse(iso) > NOTIFY_GRACE_MS;
+
+/**
+ * Менеджер мог не получить уведомление о новой заявке в Telegram (manager_notified_at пуст дольше минуты).
+ * Обычно причина — не задан или неверен manager_chat_id.
+ */
+export function managerNotificationFailed(r: { manager_notified_at: string | null; created_at: string }, now: Date): boolean {
+  return r.manager_notified_at === null && olderThanGrace(r.created_at, now);
+}
+
+/**
+ * Гость не получил сообщение о решении (guest_notified_at пуст дольше минуты после смены статуса).
+ * Только для confirmed / declined: их ставит исключительно менеджер. cancelled — не показываем: бронь мог отменить
+ * сам гость через бота, а тогда уведомления нет и не должно быть.
+ */
+export function guestNotificationFailed(
+  r: { status: BookingStatus; conversation_id: string | null; guest_notified_at: string | null; updated_at: string },
+  now: Date,
+): boolean {
+  return (
+    (r.status === "confirmed" || r.status === "declined") &&
+    r.conversation_id !== null &&
+    r.guest_notified_at === null &&
+    olderThanGrace(r.updated_at, now)
+  );
+}

@@ -12,10 +12,14 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AuthedBookingsRouteImport } from './routes/_authed/bookings'
 import { Route as AuthedFaqRouteImport } from './routes/_authed/faq'
 import { Route as AuthedMenuRouteImport } from './routes/_authed/menu'
+import { Route as AuthedRequestsRouteImport } from './routes/_authed/requests'
 import { Route as AuthedRestaurantRouteImport } from './routes/_authed/restaurant'
+import { Route as AuthedBookingsBookingIdRouteImport } from './routes/_authed/bookings.$bookingId'
 import { Route as AuthedMenuCategoryIdRouteImport } from './routes/_authed/menu.$categoryId'
+import { Route as AuthedRequestsRequestIdRouteImport } from './routes/_authed/requests.$requestId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -31,6 +35,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthedBookingsRoute = AuthedBookingsRouteImport.update({
+  id: '/bookings',
+  path: '/bookings',
+  getParentRoute: () => AuthedRoute,
+} as any)
 const AuthedFaqRoute = AuthedFaqRouteImport.update({
   id: '/faq',
   path: '/faq',
@@ -41,58 +50,108 @@ const AuthedMenuRoute = AuthedMenuRouteImport.update({
   path: '/menu',
   getParentRoute: () => AuthedRoute,
 } as any)
+const AuthedRequestsRoute = AuthedRequestsRouteImport.update({
+  id: '/requests',
+  path: '/requests',
+  getParentRoute: () => AuthedRoute,
+} as any)
 const AuthedRestaurantRoute = AuthedRestaurantRouteImport.update({
   id: '/restaurant',
   path: '/restaurant',
   getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedBookingsBookingIdRoute = AuthedBookingsBookingIdRouteImport.update({
+  id: '/$bookingId',
+  path: '/$bookingId',
+  getParentRoute: () => AuthedBookingsRoute,
 } as any)
 const AuthedMenuCategoryIdRoute = AuthedMenuCategoryIdRouteImport.update({
   id: '/$categoryId',
   path: '/$categoryId',
   getParentRoute: () => AuthedMenuRoute,
 } as any)
+const AuthedRequestsRequestIdRoute = AuthedRequestsRequestIdRouteImport.update({
+  id: '/$requestId',
+  path: '/$requestId',
+  getParentRoute: () => AuthedRequestsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/bookings': typeof AuthedBookingsRouteWithChildren
   '/faq': typeof AuthedFaqRoute
   '/menu': typeof AuthedMenuRouteWithChildren
+  '/requests': typeof AuthedRequestsRouteWithChildren
   '/restaurant': typeof AuthedRestaurantRoute
+  '/bookings/$bookingId': typeof AuthedBookingsBookingIdRoute
   '/menu/$categoryId': typeof AuthedMenuCategoryIdRoute
+  '/requests/$requestId': typeof AuthedRequestsRequestIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/bookings': typeof AuthedBookingsRouteWithChildren
   '/faq': typeof AuthedFaqRoute
   '/menu': typeof AuthedMenuRouteWithChildren
+  '/requests': typeof AuthedRequestsRouteWithChildren
   '/restaurant': typeof AuthedRestaurantRoute
+  '/bookings/$bookingId': typeof AuthedBookingsBookingIdRoute
   '/menu/$categoryId': typeof AuthedMenuCategoryIdRoute
+  '/requests/$requestId': typeof AuthedRequestsRequestIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
+  '/_authed/bookings': typeof AuthedBookingsRouteWithChildren
   '/_authed/faq': typeof AuthedFaqRoute
   '/_authed/menu': typeof AuthedMenuRouteWithChildren
+  '/_authed/requests': typeof AuthedRequestsRouteWithChildren
   '/_authed/restaurant': typeof AuthedRestaurantRoute
+  '/_authed/bookings/$bookingId': typeof AuthedBookingsBookingIdRoute
   '/_authed/menu/$categoryId': typeof AuthedMenuCategoryIdRoute
+  '/_authed/requests/$requestId': typeof AuthedRequestsRequestIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/login' | '/faq' | '/menu' | '/restaurant' | '/menu/$categoryId'
+    | '/'
+    | '/login'
+    | '/bookings'
+    | '/faq'
+    | '/menu'
+    | '/requests'
+    | '/restaurant'
+    | '/bookings/$bookingId'
+    | '/menu/$categoryId'
+    | '/requests/$requestId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/faq' | '/menu' | '/restaurant' | '/menu/$categoryId'
+  to:
+    | '/'
+    | '/login'
+    | '/bookings'
+    | '/faq'
+    | '/menu'
+    | '/requests'
+    | '/restaurant'
+    | '/bookings/$bookingId'
+    | '/menu/$categoryId'
+    | '/requests/$requestId'
   id:
     | '__root__'
     | '/'
     | '/_authed'
     | '/login'
+    | '/_authed/bookings'
     | '/_authed/faq'
     | '/_authed/menu'
+    | '/_authed/requests'
     | '/_authed/restaurant'
+    | '/_authed/bookings/$bookingId'
     | '/_authed/menu/$categoryId'
+    | '/_authed/requests/$requestId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -124,6 +183,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authed/bookings': {
+      id: '/_authed/bookings'
+      path: '/bookings'
+      fullPath: '/bookings'
+      preLoaderRoute: typeof AuthedBookingsRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/faq': {
       id: '/_authed/faq'
       path: '/faq'
@@ -138,12 +204,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedMenuRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/requests': {
+      id: '/_authed/requests'
+      path: '/requests'
+      fullPath: '/requests'
+      preLoaderRoute: typeof AuthedRequestsRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/restaurant': {
       id: '/_authed/restaurant'
       path: '/restaurant'
       fullPath: '/restaurant'
       preLoaderRoute: typeof AuthedRestaurantRouteImport
       parentRoute: typeof AuthedRoute
+    }
+    '/_authed/bookings/$bookingId': {
+      id: '/_authed/bookings/$bookingId'
+      path: '/$bookingId'
+      fullPath: '/bookings/$bookingId'
+      preLoaderRoute: typeof AuthedBookingsBookingIdRouteImport
+      parentRoute: typeof AuthedBookingsRoute
     }
     '/_authed/menu/$categoryId': {
       id: '/_authed/menu/$categoryId'
@@ -152,8 +232,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedMenuCategoryIdRouteImport
       parentRoute: typeof AuthedMenuRoute
     }
+    '/_authed/requests/$requestId': {
+      id: '/_authed/requests/$requestId'
+      path: '/$requestId'
+      fullPath: '/requests/$requestId'
+      preLoaderRoute: typeof AuthedRequestsRequestIdRouteImport
+      parentRoute: typeof AuthedRequestsRoute
+    }
   }
 }
+
+interface AuthedBookingsRouteChildren {
+  AuthedBookingsBookingIdRoute: typeof AuthedBookingsBookingIdRoute
+}
+
+const AuthedBookingsRouteChildren: AuthedBookingsRouteChildren = {
+  AuthedBookingsBookingIdRoute: AuthedBookingsBookingIdRoute,
+}
+
+const AuthedBookingsRouteWithChildren = AuthedBookingsRoute._addFileChildren(
+  AuthedBookingsRouteChildren,
+)
 
 interface AuthedMenuRouteChildren {
   AuthedMenuCategoryIdRoute: typeof AuthedMenuCategoryIdRoute
@@ -167,15 +266,31 @@ const AuthedMenuRouteWithChildren = AuthedMenuRoute._addFileChildren(
   AuthedMenuRouteChildren,
 )
 
+interface AuthedRequestsRouteChildren {
+  AuthedRequestsRequestIdRoute: typeof AuthedRequestsRequestIdRoute
+}
+
+const AuthedRequestsRouteChildren: AuthedRequestsRouteChildren = {
+  AuthedRequestsRequestIdRoute: AuthedRequestsRequestIdRoute,
+}
+
+const AuthedRequestsRouteWithChildren = AuthedRequestsRoute._addFileChildren(
+  AuthedRequestsRouteChildren,
+)
+
 interface AuthedRouteChildren {
+  AuthedBookingsRoute: typeof AuthedBookingsRouteWithChildren
   AuthedFaqRoute: typeof AuthedFaqRoute
   AuthedMenuRoute: typeof AuthedMenuRouteWithChildren
+  AuthedRequestsRoute: typeof AuthedRequestsRouteWithChildren
   AuthedRestaurantRoute: typeof AuthedRestaurantRoute
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
+  AuthedBookingsRoute: AuthedBookingsRouteWithChildren,
   AuthedFaqRoute: AuthedFaqRoute,
   AuthedMenuRoute: AuthedMenuRouteWithChildren,
+  AuthedRequestsRoute: AuthedRequestsRouteWithChildren,
   AuthedRestaurantRoute: AuthedRestaurantRoute,
 }
 

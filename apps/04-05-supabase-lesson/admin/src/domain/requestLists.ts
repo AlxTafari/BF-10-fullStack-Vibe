@@ -8,12 +8,13 @@ import type { ListSpec } from "./realtimeMerge";
 /** Сколько строк запрашиваем у БД. Пагинации по курсору здесь нет (спека S05, вопрос 4). */
 export const LIST_LIMIT = 100;
 export const PAGE_SIZES = [20, 50, 100] as const;
+export type PageSize = (typeof PAGE_SIZES)[number];
 export const DEFAULT_PAGE_SIZE = 20;
 
 // `.catch(...)`: неверное значение в URL (ручная правка, старая ссылка) не ломает экран, а даёт значение по умолчанию.
-const pageSize = z.coerce
-  .number()
-  .pipe(z.union([z.literal(20), z.literal(50), z.literal(100)]))
+// preprocess: из URL размер приходит и числом, и строкой ("50").
+const pageSize = z
+  .preprocess((v) => (typeof v === "string" ? Number(v) : v), z.union([z.literal(20), z.literal(50), z.literal(100)]))
   .catch(DEFAULT_PAGE_SIZE);
 
 export const bookingsSearchSchema = z.object({

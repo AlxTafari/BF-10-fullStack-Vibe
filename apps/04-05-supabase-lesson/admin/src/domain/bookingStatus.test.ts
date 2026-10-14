@@ -4,8 +4,10 @@ import {
   BOOKING_TRANSITIONS,
   type BookingActionInput,
   allowedBookingActions,
+  guestNotificationFailed,
   isBookingStatus,
   isPastDue,
+  managerNotificationFailed,
 } from "./bookingStatus";
 
 const NOW = new Date("2026-10-20T12:00:00Z");
@@ -71,5 +73,32 @@ describe("allowedBookingActions", () => {
         expect(BOOKING_TRANSITIONS[status]).toContain(action.to);
       }
     }
+  });
+});
+
+describe("метки недоставленных уведомлений", () => {
+  const now = new Date("2026-10-20T12:00:00Z");
+  const old = "2026-10-20T11:50:00Z";
+  const fresh = "2026-10-20T11:59:30Z";
+
+  it("менеджер: пусто и старше минуты — сбой; свежее — задержка; есть отметка — всё хорошо", () => {
+    expect(managerNotificationFailed({ manager_notified_at: null, created_at: old }, now)).toBe(true);
+    expect(managerNotificationFailed({ manager_notified_at: null, created_at: fresh }, now)).toBe(false);
+    expect(managerNotificationFailed({ manager_notified_at: old, created_at: old }, now)).toBe(false);
+  });
+
+  const base = { status: "confirmed" as const, conversation_id: "c", guest_notified_at: null, updated_at: old };
+  it("гость: confirmed/declined без отметки дольше минуты — сбой", () => {
+    expect(guestNotificationFailed(base, now)).toBe(true);
+    expect(guestNotificationFailed({ ...base, status: "declined" }, now)).toBe(true);
+  });
+  it("гость: свежее решение, есть отметка, нет диалога — не сбой", () => {
+    expect(guestNotificationFailed({ ...base, updated_at: fresh }, now)).toBe(false);
+    expect(guestNotificationFailed({ ...base, guest_notified_at: old }, now)).toBe(false);
+    expect(guestNotificationFailed({ ...base, conversation_id: null }, now)).toBe(false);
+  });
+  it("гость: cancelled и pending метку не получают (отмену мог сделать сам гость)", () => {
+    expect(guestNotificationFailed({ ...base, status: "cancelled" }, now)).toBe(false);
+    expect(guestNotificationFailed({ ...base, status: "pending" }, now)).toBe(false);
   });
 });

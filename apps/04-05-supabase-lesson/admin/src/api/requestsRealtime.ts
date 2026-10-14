@@ -3,6 +3,7 @@ import {
   type GuestRequest,
   mergeBookingEvent,
   mergeGuestRequestEvent,
+  pendingChangeTag,
   requestsApi,
 } from "./requestsApi";
 import type { AppDispatch } from "./store";
@@ -50,6 +51,10 @@ export function startRequestsRealtime(
         const row = payload.new as BookingRequest;
         mergeBookingEvent(dispatch, getState, { type: payload.eventType, row });
         dispatch(requestsApi.util.invalidateTags(["OpenCounts"]));
+        // Карточка исходной брони показывает её ожидающее изменение — оно могло появиться или закрыться.
+        if (row.replaces_id) {
+          dispatch(requestsApi.util.invalidateTags([{ type: "Booking", id: pendingChangeTag(row.replaces_id) }]));
+        }
         if (payload.eventType === "INSERT") handlers.onNewBooking(row);
       }
     })

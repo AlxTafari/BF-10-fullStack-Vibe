@@ -34,6 +34,9 @@ export interface StatusChange {
   to: string;
 }
 
+/** Тег кэша «ожидающее изменение брони X»: сбрасывается, когда по X приходит событие с replaces_id. */
+export const pendingChangeTag = (originalId: string) => `change-of:${originalId}`;
+
 export const requestsApi = baseApi.injectEndpoints({
   endpoints: (build) => ({
     // SQL здесь повторяет правила domain/requestLists (bookingListSpec): то, что вернул запрос, и то, что
@@ -72,6 +75,20 @@ export const requestsApi = baseApi.injectEndpoints({
         return error ? { error: toApiError(error) } : { data };
       },
       providesTags: (_result, _error, id) => [{ type: "Booking", id }],
+    }),
+
+    // Ожидающий запрос на изменение этой брони (не больше одного — частичный уникальный индекс в БД).
+    getPendingChange: build.query<BookingRequest | null, string>({
+      queryFn: async (originalId) => {
+        const { data, error } = await supabase
+          .from("booking_requests")
+          .select("*")
+          .eq("replaces_id", originalId)
+          .eq("status", "pending")
+          .maybeSingle();
+        return error ? { error: toApiError(error) } : { data };
+      },
+      providesTags: (_result, _error, originalId) => [{ type: "Booking", id: pendingChangeTag(originalId) }],
     }),
 
     getGuestRequests: build.query<GuestRequest[], GuestRequestsArgs>({
@@ -165,6 +182,7 @@ export const requestsApi = baseApi.injectEndpoints({
 export const {
   useGetBookingsQuery,
   useGetBookingQuery,
+  useGetPendingChangeQuery,
   useGetGuestRequestsQuery,
   useGetGuestRequestQuery,
   useGetOpenCountsQuery,
