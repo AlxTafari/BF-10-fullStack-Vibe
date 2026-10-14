@@ -77,6 +77,8 @@ export interface BookingRequestRow {
   /** Заявка-изменение указывает на исходную бронь; у обычной брони null. */
   replaces_id: string | null;
   manager_notified_at: string | null;
+  /** Гость получил сообщение о решении менеджера. null — не получал (сообщение в пути или отправка не удалась). Сбрасывается при каждой смене статуса. */
+  guest_notified_at: string | null;
   created_at: string;
 }
 

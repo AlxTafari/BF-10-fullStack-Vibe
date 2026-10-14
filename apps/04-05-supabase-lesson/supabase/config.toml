@@ -389,6 +389,11 @@ deno_version = 2
 [functions.telegram-webhook]
 verify_jwt = false
 
+# notify-guest вызывает триггер БД (pg_net) без Supabase JWT — вместо него проверяется секрет
+# в заголовке x-notify-secret (_shared/notifyAuth.ts).
+[functions.notify-guest]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

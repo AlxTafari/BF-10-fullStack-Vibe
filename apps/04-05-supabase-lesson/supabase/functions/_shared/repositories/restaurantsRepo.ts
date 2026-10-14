@@ -12,3 +12,10 @@ export async function getRestaurant(client: SupabaseClient): Promise<RestaurantR
   if (error) throw error;
   return data as RestaurantRow | null;
 }
+
+/** Ресторан конкретной заявки: notify-guest живёт без контекста диалога, часовой пояс берём по заявке. */
+export async function getRestaurantById(client: SupabaseClient, id: string): Promise<RestaurantRow | null> {
+  const { data, error } = await client.from("restaurants").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data as RestaurantRow | null;
+}

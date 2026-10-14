@@ -105,3 +105,12 @@ export async function cancelPendingChanges(client: SupabaseClient, originalId: s
   if (error) throw error;
   return (data?.length ?? 0) > 0;
 }
+
+/** Гость получил сообщение о решении менеджера (notify-guest). */
+export async function markBookingGuestNotified(client: SupabaseClient, id: string): Promise<void> {
+  const { error } = await client
+    .from("booking_requests")
+    .update({ guest_notified_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}

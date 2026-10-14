@@ -71,3 +71,9 @@ export async function clearStateIfDraft(
   if (error) throw error;
   return (data?.length ?? 0) > 0;
 }
+
+export async function findConversationById(client: SupabaseClient, id: string): Promise<ConversationRow | null> {
+  const { data, error } = await client.from("conversations").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data as ConversationRow | null;
+}
