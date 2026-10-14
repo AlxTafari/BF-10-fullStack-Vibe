@@ -47,6 +47,7 @@ export type Database = {
           conversation_id: string | null
           created_at: string
           guest_name: string
+          guest_notified_at: string | null
           guests_count: number
           id: string
           idempotency_key: string
@@ -63,6 +64,7 @@ export type Database = {
           conversation_id?: string | null
           created_at?: string
           guest_name: string
+          guest_notified_at?: string | null
           guests_count: number
           id?: string
           idempotency_key: string
@@ -79,6 +81,7 @@ export type Database = {
           conversation_id?: string | null
           created_at?: string
           guest_name?: string
+          guest_notified_at?: string | null
           guests_count?: number
           id?: string
           idempotency_key?: string
@@ -500,6 +503,54 @@ export type Database = {
     }
     Functions: {
       is_manager_of: { Args: { p_restaurant_id: string }; Returns: boolean }
+      set_booking_status: {
+        Args: { p_from: string; p_id: string; p_to: string }
+        Returns: {
+          booking_at: string
+          comment: string | null
+          contact: string
+          conversation_id: string | null
+          created_at: string
+          guest_name: string
+          guest_notified_at: string | null
+          guests_count: number
+          id: string
+          idempotency_key: string
+          manager_notified_at: string | null
+          replaces_id: string | null
+          restaurant_id: string
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "booking_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      set_guest_request_status: {
+        Args: { p_from: string; p_id: string; p_to: string }
+        Returns: {
+          contact: string | null
+          conversation_id: string | null
+          created_at: string
+          id: string
+          idempotency_key: string
+          kind: string
+          manager_notified_at: string | null
+          restaurant_id: string
+          status: string
+          text: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "guest_requests"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
       [_ in never]: never

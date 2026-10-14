@@ -5,6 +5,6 @@ import type { ApiError } from "./errors";
 export const baseApi = createApi({
   reducerPath: "api",
   baseQuery: fakeBaseQuery<ApiError>(),
-  tagTypes: ["Restaurant", "Faq", "MenuCategory", "MenuItem"],
+  tagTypes: ["Restaurant", "Faq", "MenuCategory", "MenuItem", "BookingList", "GuestRequestList", "Booking", "GuestRequest", "OpenCounts"],
   endpoints: () => ({}),
 });
