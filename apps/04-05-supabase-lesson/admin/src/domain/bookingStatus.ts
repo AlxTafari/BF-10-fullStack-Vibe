@@ -89,12 +89,14 @@ export function managerNotificationFailed(r: { manager_notified_at: string | nul
  * Гость не получил сообщение о решении (guest_notified_at пуст дольше минуты после смены статуса).
  * Только для confirmed / declined: их ставит исключительно менеджер. cancelled — не показываем: бронь мог отменить
  * сам гость через бота, а тогда уведомления нет и не должно быть.
+ * Не показываем и когда время брони уже прошло: notify-guest о таких решениях гостю не пишет намеренно.
  */
 export function guestNotificationFailed(
-  r: { status: BookingStatus; conversation_id: string | null; guest_notified_at: string | null; updated_at: string },
+  r: { status: BookingStatus; conversation_id: string | null; guest_notified_at: string | null; updated_at: string; booking_at: string },
   now: Date,
 ): boolean {
   return (
+    Date.parse(r.booking_at) > now.getTime() &&
     (r.status === "confirmed" || r.status === "declined") &&
     r.conversation_id !== null &&
     r.guest_notified_at === null &&

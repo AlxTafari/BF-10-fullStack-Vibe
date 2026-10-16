@@ -15,6 +15,14 @@ export function isBookingDecision(status: string): status is "confirmed" | "decl
   return status === "confirmed" || status === "declined" || status === "cancelled";
 }
 
+/**
+ * Время брони уже наступило. О решении по такой заявке гостю не пишем: он сам знает, что время прошло,
+ * а «не можем принять заявку на 14.10 01:21» спустя часы или дни — шум.
+ */
+export function isBookingPast(bookingAt: string, now: Date): boolean {
+  return new Date(bookingAt).getTime() <= now.getTime();
+}
+
 /** Текст гостю или null, если по этому статусу сообщать нечего. */
 export function formatBookingDecision(b: BookingDecisionInput, timeZone: string): string | null {
   if (!isBookingDecision(b.status)) return null;

@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { formatBookingDecision, isBookingDecision } from "./guestNotification.ts";
+import { formatBookingDecision, isBookingDecision, isBookingPast } from "./guestNotification.ts";
 
 // 16:00 UTC в Салониках (EET/EEST, октябрь = UTC+3) → 19:00
 const base = { booking_at: "2026-10-20T16:00:00+00:00", guests_count: 4, isChange: false };
@@ -33,4 +33,11 @@ Deno.test("запрос на изменение: говорит про изме�
     const text = formatBookingDecision({ ...base, status, isChange: true }, TZ)!;
     assertStringIncludes(text, "Прежняя бронь остаётся в силе");
   }
+});
+
+Deno.test("прошедшая бронь: время наступило — гостю не пишем", () => {
+  const now = new Date("2026-10-20T16:00:00+00:00");
+  assertEquals(isBookingPast("2026-10-20T15:59:59+00:00", now), true);
+  assertEquals(isBookingPast("2026-10-20T16:00:00+00:00", now), true);
+  assertEquals(isBookingPast("2026-10-20T16:00:01+00:00", now), false);
 });

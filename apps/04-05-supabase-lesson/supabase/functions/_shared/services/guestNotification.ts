@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { formatBookingDecision } from "../domain/guestNotification.ts";
+import { formatBookingDecision, isBookingPast } from "../domain/guestNotification.ts";
 import { findBookingById, markBookingGuestNotified } from "../repositories/bookingRequestsRepo.ts";
 import { findConversationById } from "../repositories/conversationsRepo.ts";
 import { logMessage } from "../repositories/messagesRepo.ts";
@@ -14,6 +14,7 @@ export type GuestNotifyResult = "sent" | "skipped" | "failed";
  *
  * `expectedStatus` — статус, о котором говорил триггер. Если заявка с тех пор изменилась, отправка пропускается:
  * о новом статусе сообщит свой вызов, а гость не получит устаревшее «подтверждена».
+ * Если время брони уже наступило — тоже пропуск (guest_notified_at остаётся пустым; админка в этом случае метку «не уведомлён» не показывает).
  * Повторный вызов по уже оповещённому статусу тоже пропускается (guest_notified_at сбрасывается при каждой смене статуса).
  * Ошибка отправки не пробрасывается: решение менеджера уже сохранено, об сбое остаётся guest_notified_at = null.
  */
@@ -28,6 +29,7 @@ export async function notifyGuestOfBookingDecision(
     if (!booking || booking.status !== expectedStatus || booking.guest_notified_at || !booking.conversation_id) {
       return "skipped";
     }
+    if (isBookingPast(booking.booking_at, new Date())) return "skipped";
 
     const [conversation, restaurant] = await Promise.all([
       findConversationById(client, booking.conversation_id),

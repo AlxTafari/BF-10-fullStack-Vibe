@@ -87,7 +87,7 @@ describe("метки недоставленных уведомлений", () =>
     expect(managerNotificationFailed({ manager_notified_at: old, created_at: old }, now)).toBe(false);
   });
 
-  const base = { status: "confirmed" as const, conversation_id: "c", guest_notified_at: null, updated_at: old };
+  const base = { status: "confirmed" as const, conversation_id: "c", guest_notified_at: null, updated_at: old, booking_at: future };
   it("гость: confirmed/declined без отметки дольше минуты — сбой", () => {
     expect(guestNotificationFailed(base, now)).toBe(true);
     expect(guestNotificationFailed({ ...base, status: "declined" }, now)).toBe(true);
@@ -96,6 +96,10 @@ describe("метки недоставленных уведомлений", () =>
     expect(guestNotificationFailed({ ...base, updated_at: fresh }, now)).toBe(false);
     expect(guestNotificationFailed({ ...base, guest_notified_at: old }, now)).toBe(false);
     expect(guestNotificationFailed({ ...base, conversation_id: null }, now)).toBe(false);
+  });
+  it("гость: время брони прошло — гостю намеренно не писали, не сбой", () => {
+    expect(guestNotificationFailed({ ...base, booking_at: old }, now)).toBe(false);
+    expect(guestNotificationFailed({ ...base, status: "declined", booking_at: old }, now)).toBe(false);
   });
   it("гость: cancelled и pending метку не получают (отмену мог сделать сам гость)", () => {
     expect(guestNotificationFailed({ ...base, status: "cancelled" }, now)).toBe(false);
