@@ -31,7 +31,7 @@
 
 ## ADR-002. Админка — Vite SPA + shadcn/ui + TanStack Router
 
-**Статус:** Принято, реализовано S04 (каркас, вход, справочники). Каталог — `apps/04-05-supabase-lesson/admin/`.
+**Статус:** Принято, реализовано S04 (каркас, вход, справочники) и S05 (заявки, обращения, Realtime); чат — S06. Каталог — `apps/04-05-supabase-lesson/admin/`.
 
 **Контекст.** Админка за логином, SEO не нужно, SSR не нужен. Маршрутизация — TanStack Router (требование владельца), поэтому Next.js 15 с App Router не используем.
 
@@ -45,7 +45,7 @@
 
 ## ADR-003. Realtime админки — Supabase Realtime (WebSocket)
 
-**Статус:** Принято.
+**Статус:** Принято, реализовано S05 для `booking_requests` и `guest_requests` (канал `requests:<restaurantId>`, `applyRowEvent`, `setAuth` после refresh); `messages` — S06. Уточнения: `DELETE`-события RLS не фильтруются (приходят всем подписчикам, только с `id`); список пересчитывается на каждом `SUBSCRIBED`; переподключение проверено вручную не полностью (`TESTER.md`).
 
 **Контекст.** Менеджер должен видеть новые заявки, обращения и сообщения без перезагрузки.
 
@@ -59,7 +59,7 @@
 
 ## ADR-004. Ядро бота без AI; AI — подключаемый слой (S09)
 
-**Статус:** Принято (ядро), реализовано S01–S03: `getRestaurantInfo` (S01), `listFaq`, `getFaqAnswer`, `listMenuCategories`, `searchMenu` (без `maxPrice`), `getDishDetails` (S02); `createBookingRequest`, `createGuestRequest`, `notifyManager`, `listMyRequests`, `getMyBooking`, `cancelMyBooking` (S03). Валидация полей — внутри сервисов, ошибки — значениями. Выбор LLM-провайдера — отложен до S09.
+**Статус:** Принято (ядро), реализовано S01–S03: `getRestaurantInfo` (S01), `listFaq`, `getFaqAnswer`, `listMenuCategories`, `searchMenu` (без `maxPrice`), `getDishDetails` (S02); `createBookingRequest`, `createGuestRequest`, `notifyManager`, `listMyRequests`, `getMyBooking`, `cancelMyBooking` (S03); `notifyGuestOfBookingDecision` (S05, вызывается из Edge Function `notify-guest`, не из webhook). Валидация полей — внутри сервисов, ошибки — значениями. Выбор LLM-провайдера — отложен до S09.
 
 **Контекст.** Сначала нужны рабочее ядро и админка. MVP-план §5 предполагает AI поверх ограниченного набора функций; RAG и векторная база в первой версии не нужны.
 

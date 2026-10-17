@@ -54,6 +54,22 @@ pnpm check:layers:admin     # правило зависимостей слоёв
 
 Пока `manager_chat_id` пуст, заявки сохраняются, а `manager_notified_at` остаётся `null` (в логах функции — предупреждение).
 
+## Уведомления гостю о решении по брони (S05)
+
+Когда менеджер подтверждает, отклоняет или отменяет бронь в админке, RPC `set_booking_status` обновляет статус, триггер БД через `pg_net` вызывает Edge Function `notify-guest`, а она пишет гостю в Telegram. Гостю не пишем, если время брони уже наступило, если бронь отменил сам гость и при каскадной отмене исходной брони.
+
+Настройка проекта (один раз, значение секрета в чат и в git не попадает):
+
+1. Придумать длинный случайный секрет и выставить его функции: `supabase secrets set NOTIFY_GUEST_SECRET=<секрет> --project-ref <ref>`.
+2. Задеплоить функцию: `supabase functions deploy notify-guest --project-ref <ref>` (`verify_jwt = false` в `config.toml`: вызов идёт из БД, защищён заголовком `x-notify-secret`).
+3. Положить в Vault (SQL Editor дашборда, либо `supabase db query --linked -f файл.sql` из временного файла):
+   ```sql
+   select vault.create_secret('https://<ref>.supabase.co/functions/v1/notify-guest', 'notify_guest_url');
+   select vault.create_secret('<тот же секрет>', 'notify_guest_secret');
+   ```
+
+Пока Vault пуст, статус меняется как обычно, а триггер лишь пишет `warning`; у заявки в админке появляется метка «гость не уведомлён».
+
 ## Часы работы и бронь
 
 Проверка брони использует `restaurants.opening_hours` (jsonb: ключ — ISO-день недели `"1"`…`"7"`, значение `{"open":"13:00","close":"24:00"}`, нет ключа = выходной, `null` = без ограничений). Свободный текст `working_hours` показывается гостю в «О ресторане». Правка — на экране «Ресторан» админки.
