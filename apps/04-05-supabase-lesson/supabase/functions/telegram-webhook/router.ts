@@ -96,7 +96,7 @@ async function handleCallbackQuery(deps: Deps, cq: TelegramCallbackQuery): Promi
   if (!ctx) return;
 
   const data = cq.data ?? "";
-  await logIncoming(ctx, `[кнопка] ${data}`);
+  await logIncoming(ctx, `[кнопка] ${data}`, "button");
 
   // Кнопки сценария: flow:<draftId>:<действие>. Чужой draftId = старая сводка в чате — ничего не меняем.
   if (isFlowCallback(data)) {

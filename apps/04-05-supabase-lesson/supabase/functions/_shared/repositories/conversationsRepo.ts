@@ -34,14 +34,6 @@ export async function upsertConversation(
   return data as ConversationRow;
 }
 
-export async function touchConversation(client: SupabaseClient, conversationId: string): Promise<void> {
-  const { error } = await client
-    .from("conversations")
-    .update({ last_message_at: new Date().toISOString() })
-    .eq("id", conversationId);
-  if (error) throw error;
-}
-
 /** Сохраняет состояние сценария целиком (`{}` = сценария нет). */
 export async function setConversationState(
   client: SupabaseClient,

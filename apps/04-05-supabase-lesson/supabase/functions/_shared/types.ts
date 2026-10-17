@@ -1,6 +1,8 @@
 import type { OpeningHours } from "./domain/bookingRules.ts";
 
 export type MessageDirection = "in" | "out";
+/** text — обычное сообщение, button — нажатие inline-кнопки (текст остаётся «[кнопка] …»). */
+export type MessageKind = "text" | "button";
 
 export interface RestaurantRow {
   id: string;

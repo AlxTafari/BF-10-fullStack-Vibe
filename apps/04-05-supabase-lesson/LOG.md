@@ -23,3 +23,13 @@
 - **Ответы менеджера из админки** (запрос пользователя) — **не в S06**, а отдельный спринт S06b (роадмап §2: сигнал возврата сработал, §3: строка S06b). Это доп. фича поверх чтения, не переделка: добавится `messages.sender`, Edge Function отправки, статусы доставки. Открытые вопросы S06b: статусы доставки, ручной режим при активном сценарии брони, блокировка бота гостем. В S06 под них ничего не закладываем.
 - Спека S06 обновлена: §1, §2.А, §2.В, инвариант 13, шаги приёмки 13а–13в.
 **Осталось:** всё; порядок работ — миграция и dev-seed, бот (`kind`, снять `touchConversation`), сверка форматов `created_at` (Realtime vs RPC), `domain/` с тестами, `api/`, экран, Realtime, связка с заявками, приёмка.
+
+## 2026-10-18 — S06: миграция, правка бота, dev-seed
+**Цель:** схема и серверная часть чата (§2.А, §2.Б).
+**Решения:**
+- Миграция `20261018100000_admin_chat.sql` применена на dev (`db:push`): `messages.kind`, `last_message_*`, `manager_last_read_at`, триггер `messages_after_insert`, политики `select`, публикация Realtime, RPC `get_messages_page` / `list_conversations_page` / `count_unread_conversations` / `mark_conversation_read`. Проверка после применения: 274 сообщения, 112 `button`, превью заполнено, `manager_last_read_at = last_message_at` у существующего диалога.
+- **Отступление от спеки:** триггер ставит `last_message_at = greatest(last_message_at, new.created_at)` (спека: «всегда new.created_at»), превью и направление — только если нет более позднего текстового сообщения. Иначе при двойном тапе, когда коммиты идут в обратном порядке `created_at`, диалог откатывался бы назад. Спеку не переписываем — факт уйдёт в STATE при закрытии.
+- `mark_conversation_read`: чужой и несуществующий диалог дают одинаковый `not_found`; `p_up_to` обрезается по `last_message_at`; нет изменения — нет `UPDATE` (нет лишнего события Realtime).
+- Бот: `kind` в `logMessage`/`recordMessage`/`logIncoming`, нажатия кнопок пишутся с `button`; `touchConversation` удалён. `deno check`, 86 тестов, `check:layers` — чисто. **Бот ещё не задеплоен** (старый бот с новой схемой совместим).
+- Dev-seed `supabase/dev-chat-seed.sql` + `db:seed:chat-demo` / `db:clean:chat-demo` написаны, на БД **не запускались**.
+**Осталось:** деплой бота; запуск seed; сверка форматов `created_at` (Realtime vs RPC) — первая запись перед `domain/cursor.ts`; `domain/` с тестами; `api/`; экран; Realtime; связка с заявками; RLS-тесты; приёмка.

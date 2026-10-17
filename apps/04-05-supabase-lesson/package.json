@@ -11,6 +11,8 @@
     "db:push": "supabase db push",
     "db:reset": "supabase db reset",
     "db:seed:remote": "supabase db query --linked -f supabase/seed.sql",
+    "db:seed:chat-demo": "supabase db query --linked -f supabase/dev-chat-seed.sql",
+    "db:clean:chat-demo": "supabase db query --linked \"delete from conversations where channel = 'telegram' and external_user_id = -1001\"",
     "link": "supabase link",
     "check:layers": "bash scripts/check-layers.sh"
   },

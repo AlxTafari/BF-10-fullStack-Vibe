@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { touchConversation, upsertConversation } from "../repositories/conversationsRepo.ts";
+import { upsertConversation } from "../repositories/conversationsRepo.ts";
 import { logMessage } from "../repositories/messagesRepo.ts";
 import { getRestaurant } from "../repositories/restaurantsRepo.ts";
-import type { ConversationRow, MessageDirection } from "../types.ts";
+import type { ConversationRow, MessageDirection, MessageKind } from "../types.ts";
 
 interface OpenConversationInput {
   externalUserId: number;
@@ -20,13 +20,16 @@ export async function openConversation(
   return await upsertConversation(client, { restaurantId: restaurant.id, ...input });
 }
 
-/** Сохраняет сообщение диалога и обновляет last_message_at — одна операция для входящих и исходящих. */
+/**
+ * Сохраняет сообщение диалога — для входящих и исходящих. last_message_at и превью для списка админки
+ * обновляет триггер messages_after_insert в той же транзакции, поэтому здесь второго запроса нет.
+ */
 export async function recordMessage(
   client: SupabaseClient,
   conversationId: string,
   direction: MessageDirection,
   text: string,
+  kind: MessageKind = "text",
 ): Promise<void> {
-  await logMessage(client, { conversationId, direction, text });
-  await touchConversation(client, conversationId);
+  await logMessage(client, { conversationId, direction, text, kind });
 }
