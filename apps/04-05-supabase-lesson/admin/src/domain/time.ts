@@ -1,8 +1,8 @@
 // Форматирование моментов. Время заявок показываем в часовом поясе РЕСТОРАНА, не браузера:
 // менеджер в другой стране видит ту же «19:00», что и гость. Через Intl, без зависимостей.
 
-/** "20.10.2026 19:00" в заданном поясе. */
-export function formatInZone(iso: string, timeZone: string): string {
+/** Календарные части момента в заданном поясе (час — 00–23). Общая основа для всех подписей времени. */
+export function zonedParts(iso: string, timeZone: string) {
   const parts = new Intl.DateTimeFormat("ru-RU", {
     timeZone,
     day: "2-digit",
@@ -13,7 +13,13 @@ export function formatInZone(iso: string, timeZone: string): string {
     hourCycle: "h23",
   }).formatToParts(new Date(iso));
   const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
-  return `${get("day")}.${get("month")}.${get("year")} ${get("hour")}:${get("minute")}`;
+  return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour"), minute: get("minute") };
+}
+
+/** "20.10.2026 19:00" в заданном поясе. */
+export function formatInZone(iso: string, timeZone: string): string {
+  const { year, month, day, hour, minute } = zonedParts(iso, timeZone);
+  return `${day}.${month}.${year} ${hour}:${minute}`;
 }
 
 /** "только что" / "5 мин назад" / "3 ч назад" / "2 дн назад". Будущее и отрицательные интервалы — «только что». */
