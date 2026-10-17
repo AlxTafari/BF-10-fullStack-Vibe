@@ -1,12 +1,14 @@
 import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useGetMeQuery, useSignOutMutation } from "@/api/authApi";
+import { useGetConversationsQuery, useGetUnreadCountQuery } from "@/api/chatApi";
 import { useGetOpenCountsQuery } from "@/api/requestsApi";
 import type { ConnectionStatus } from "@/api/requestsRealtime";
 import { useAppSelector } from "@/api/store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useConversationsRealtime } from "@/features/chat/useConversationsRealtime";
 import { LoadError } from "@/features/common/LoadError";
 import { useNotifySound } from "@/features/requests/useNotifySound";
 import { useRequestsRealtime } from "@/features/requests/useRequestsRealtime";
@@ -19,6 +21,13 @@ const CONNECTION_LABEL: Record<ConnectionStatus, { text: string; className: stri
   connecting: { text: "● подключение…", className: "text-muted-foreground" },
   offline: { text: "● нет связи, переподключаем…", className: "text-destructive" },
 };
+
+/** Общий индикатор: хуже любого из каналов (нет связи > подключение > онлайн). */
+function combineConnection(a: ConnectionStatus, b: ConnectionStatus): ConnectionStatus {
+  if (a === "offline" || b === "offline") return "offline";
+  if (a === "connecting" || b === "connecting") return "connecting";
+  return "online";
+}
 
 export function AuthedLayout() {
   const status = useAppSelector((s) => s.auth.status);
@@ -65,11 +74,17 @@ function Shell({
 }) {
   const sound = useNotifySound();
   // Один канал на сессию менеджера — здесь, а не на странице: бейджи нужны на любом экране.
-  const connection = useRequestsRealtime(restaurantId, sound.play);
+  const requestsConnection = useRequestsRealtime(restaurantId, sound.play);
+  // То же для диалогов: бейдж непрочитанных нужен на любой странице. Это тоже WebSocket-канал — индикатор общий.
+  const chatsConnection = useConversationsRealtime(restaurantId);
+  const connection = combineConnection(requestsConnection, chatsConnection);
   const counts = useGetOpenCountsQuery(restaurantId).data;
-  const open = (counts?.bookings ?? 0) + (counts?.guestRequests ?? 0);
+  const unreadChats = useGetUnreadCountQuery().data ?? 0;
+  // Список диалогов грузим заранее: события Realtime вливаются в кэш, а он должен уже существовать.
+  useGetConversationsQuery({ cursor: null });
+  const open = (counts?.bookings ?? 0) + (counts?.guestRequests ?? 0) + unreadChats;
 
-  // Число ожидающих заявок в заголовке вкладки — видно, даже когда вкладка не в фокусе.
+  // Число ожидающих заявок и диалогов с непрочитанным в заголовке вкладки — видно, даже когда вкладка не в фокусе.
   useEffect(() => {
     document.title = open > 0 ? `(${open}) ${BASE_TITLE}` : BASE_TITLE;
     return () => {
@@ -80,6 +95,7 @@ function Shell({
   const nav = [
     { to: "/bookings", label: "Брони", badge: counts?.bookings ?? 0 },
     { to: "/requests", label: "Обращения", badge: counts?.guestRequests ?? 0 },
+    { to: "/chats", label: "Чаты", badge: unreadChats },
     { to: "/menu", label: "Меню", badge: 0 },
     { to: "/faq", label: "FAQ", badge: 0 },
     { to: "/restaurant", label: "Ресторан", badge: 0 },
@@ -97,7 +113,7 @@ function Shell({
               className="flex items-center gap-1.5 text-sm text-muted-foreground [&.active]:font-medium [&.active]:text-foreground"
             >
               {label}
-              {badge > 0 && <Badge aria-label={`ожидают: ${badge}`}>{badge}</Badge>}
+              {badge > 0 && <Badge aria-label={`требуют внимания: ${badge}`}>{badge}</Badge>}
             </Link>
           ))}
         </nav>

@@ -21,6 +21,20 @@ export type ConversationEventRow = Omit<ConversationRow, "unread_count" | "last_
   last_message_at: string | null;
 };
 
+/** Строка списка → вид события Realtime (без счётчика): так сервер-ответ и событие сравниваются одним кодом. */
+export function toEventRow(row: ConversationRow): ConversationEventRow {
+  return {
+    id: row.id,
+    display_name: row.display_name,
+    channel: row.channel,
+    created_at: row.created_at,
+    last_message_at: row.last_message_at,
+    last_message_preview: row.last_message_preview,
+    last_message_direction: row.last_message_direction,
+    manager_last_read_at: row.manager_last_read_at,
+  };
+}
+
 export const keyOfConversation = (c: ConversationRow): Cursor => ({ at: c.last_message_at, id: c.id });
 
 const sameStamp = (a: string | null, b: string | null) =>

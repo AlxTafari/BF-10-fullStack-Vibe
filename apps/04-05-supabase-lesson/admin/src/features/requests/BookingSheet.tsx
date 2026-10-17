@@ -33,6 +33,7 @@ import {
 import { guestsLabel } from "@/domain/plural";
 import type { BookingsSearch } from "@/domain/requestLists";
 import { formatInZone } from "@/domain/time";
+import { OpenConversationLink } from "@/features/chat/OpenConversationLink";
 import { LoadError } from "@/features/common/LoadError";
 import { useNow } from "@/features/common/useNow";
 import { ContactValue } from "./ContactValue";
@@ -159,6 +160,8 @@ function BookingDetails({
         <Field label="Создана">{formatInZone(booking.created_at, timeZone)}</Field>
         <Field label="Обновлена">{formatInZone(booking.updated_at, timeZone)}</Field>
       </dl>
+
+      <OpenConversationLink conversationId={booking.conversation_id} />
 
       {pendingChange && (
         <p className="rounded-md border border-amber-500/50 p-3 text-sm">

@@ -13,11 +13,13 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedBookingsRouteImport } from './routes/_authed/bookings'
+import { Route as AuthedChatsRouteImport } from './routes/_authed/chats'
 import { Route as AuthedFaqRouteImport } from './routes/_authed/faq'
 import { Route as AuthedMenuRouteImport } from './routes/_authed/menu'
 import { Route as AuthedRequestsRouteImport } from './routes/_authed/requests'
 import { Route as AuthedRestaurantRouteImport } from './routes/_authed/restaurant'
 import { Route as AuthedBookingsBookingIdRouteImport } from './routes/_authed/bookings.$bookingId'
+import { Route as AuthedChatsConversationIdRouteImport } from './routes/_authed/chats.$conversationId'
 import { Route as AuthedMenuCategoryIdRouteImport } from './routes/_authed/menu.$categoryId'
 import { Route as AuthedRequestsRequestIdRouteImport } from './routes/_authed/requests.$requestId'
 
@@ -38,6 +40,11 @@ const LoginRoute = LoginRouteImport.update({
 const AuthedBookingsRoute = AuthedBookingsRouteImport.update({
   id: '/bookings',
   path: '/bookings',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedChatsRoute = AuthedChatsRouteImport.update({
+  id: '/chats',
+  path: '/chats',
   getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedFaqRoute = AuthedFaqRouteImport.update({
@@ -65,6 +72,12 @@ const AuthedBookingsBookingIdRoute = AuthedBookingsBookingIdRouteImport.update({
   path: '/$bookingId',
   getParentRoute: () => AuthedBookingsRoute,
 } as any)
+const AuthedChatsConversationIdRoute =
+  AuthedChatsConversationIdRouteImport.update({
+    id: '/$conversationId',
+    path: '/$conversationId',
+    getParentRoute: () => AuthedChatsRoute,
+  } as any)
 const AuthedMenuCategoryIdRoute = AuthedMenuCategoryIdRouteImport.update({
   id: '/$categoryId',
   path: '/$categoryId',
@@ -80,11 +93,13 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/bookings': typeof AuthedBookingsRouteWithChildren
+  '/chats': typeof AuthedChatsRouteWithChildren
   '/faq': typeof AuthedFaqRoute
   '/menu': typeof AuthedMenuRouteWithChildren
   '/requests': typeof AuthedRequestsRouteWithChildren
   '/restaurant': typeof AuthedRestaurantRoute
   '/bookings/$bookingId': typeof AuthedBookingsBookingIdRoute
+  '/chats/$conversationId': typeof AuthedChatsConversationIdRoute
   '/menu/$categoryId': typeof AuthedMenuCategoryIdRoute
   '/requests/$requestId': typeof AuthedRequestsRequestIdRoute
 }
@@ -92,11 +107,13 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/bookings': typeof AuthedBookingsRouteWithChildren
+  '/chats': typeof AuthedChatsRouteWithChildren
   '/faq': typeof AuthedFaqRoute
   '/menu': typeof AuthedMenuRouteWithChildren
   '/requests': typeof AuthedRequestsRouteWithChildren
   '/restaurant': typeof AuthedRestaurantRoute
   '/bookings/$bookingId': typeof AuthedBookingsBookingIdRoute
+  '/chats/$conversationId': typeof AuthedChatsConversationIdRoute
   '/menu/$categoryId': typeof AuthedMenuCategoryIdRoute
   '/requests/$requestId': typeof AuthedRequestsRequestIdRoute
 }
@@ -106,11 +123,13 @@ export interface FileRoutesById {
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
   '/_authed/bookings': typeof AuthedBookingsRouteWithChildren
+  '/_authed/chats': typeof AuthedChatsRouteWithChildren
   '/_authed/faq': typeof AuthedFaqRoute
   '/_authed/menu': typeof AuthedMenuRouteWithChildren
   '/_authed/requests': typeof AuthedRequestsRouteWithChildren
   '/_authed/restaurant': typeof AuthedRestaurantRoute
   '/_authed/bookings/$bookingId': typeof AuthedBookingsBookingIdRoute
+  '/_authed/chats/$conversationId': typeof AuthedChatsConversationIdRoute
   '/_authed/menu/$categoryId': typeof AuthedMenuCategoryIdRoute
   '/_authed/requests/$requestId': typeof AuthedRequestsRequestIdRoute
 }
@@ -120,11 +139,13 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/bookings'
+    | '/chats'
     | '/faq'
     | '/menu'
     | '/requests'
     | '/restaurant'
     | '/bookings/$bookingId'
+    | '/chats/$conversationId'
     | '/menu/$categoryId'
     | '/requests/$requestId'
   fileRoutesByTo: FileRoutesByTo
@@ -132,11 +153,13 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/bookings'
+    | '/chats'
     | '/faq'
     | '/menu'
     | '/requests'
     | '/restaurant'
     | '/bookings/$bookingId'
+    | '/chats/$conversationId'
     | '/menu/$categoryId'
     | '/requests/$requestId'
   id:
@@ -145,11 +168,13 @@ export interface FileRouteTypes {
     | '/_authed'
     | '/login'
     | '/_authed/bookings'
+    | '/_authed/chats'
     | '/_authed/faq'
     | '/_authed/menu'
     | '/_authed/requests'
     | '/_authed/restaurant'
     | '/_authed/bookings/$bookingId'
+    | '/_authed/chats/$conversationId'
     | '/_authed/menu/$categoryId'
     | '/_authed/requests/$requestId'
   fileRoutesById: FileRoutesById
@@ -190,6 +215,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedBookingsRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/chats': {
+      id: '/_authed/chats'
+      path: '/chats'
+      fullPath: '/chats'
+      preLoaderRoute: typeof AuthedChatsRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/faq': {
       id: '/_authed/faq'
       path: '/faq'
@@ -225,6 +257,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedBookingsBookingIdRouteImport
       parentRoute: typeof AuthedBookingsRoute
     }
+    '/_authed/chats/$conversationId': {
+      id: '/_authed/chats/$conversationId'
+      path: '/$conversationId'
+      fullPath: '/chats/$conversationId'
+      preLoaderRoute: typeof AuthedChatsConversationIdRouteImport
+      parentRoute: typeof AuthedChatsRoute
+    }
     '/_authed/menu/$categoryId': {
       id: '/_authed/menu/$categoryId'
       path: '/$categoryId'
@@ -254,6 +293,18 @@ const AuthedBookingsRouteWithChildren = AuthedBookingsRoute._addFileChildren(
   AuthedBookingsRouteChildren,
 )
 
+interface AuthedChatsRouteChildren {
+  AuthedChatsConversationIdRoute: typeof AuthedChatsConversationIdRoute
+}
+
+const AuthedChatsRouteChildren: AuthedChatsRouteChildren = {
+  AuthedChatsConversationIdRoute: AuthedChatsConversationIdRoute,
+}
+
+const AuthedChatsRouteWithChildren = AuthedChatsRoute._addFileChildren(
+  AuthedChatsRouteChildren,
+)
+
 interface AuthedMenuRouteChildren {
   AuthedMenuCategoryIdRoute: typeof AuthedMenuCategoryIdRoute
 }
@@ -280,6 +331,7 @@ const AuthedRequestsRouteWithChildren = AuthedRequestsRoute._addFileChildren(
 
 interface AuthedRouteChildren {
   AuthedBookingsRoute: typeof AuthedBookingsRouteWithChildren
+  AuthedChatsRoute: typeof AuthedChatsRouteWithChildren
   AuthedFaqRoute: typeof AuthedFaqRoute
   AuthedMenuRoute: typeof AuthedMenuRouteWithChildren
   AuthedRequestsRoute: typeof AuthedRequestsRouteWithChildren
@@ -288,6 +340,7 @@ interface AuthedRouteChildren {
 
 const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedBookingsRoute: AuthedBookingsRouteWithChildren,
+  AuthedChatsRoute: AuthedChatsRouteWithChildren,
   AuthedFaqRoute: AuthedFaqRoute,
   AuthedMenuRoute: AuthedMenuRouteWithChildren,
   AuthedRequestsRoute: AuthedRequestsRouteWithChildren,

@@ -20,11 +20,13 @@ const AUTH_OPTS = { auth: { persistSession: false, autoRefreshToken: false } } a
 
 /** Справочные таблицы: менеджер ресторана работает с ними через политики. */
 const CATALOG_TABLES = ["restaurants", "faq_entries", "menu_categories", "menu_items"] as const;
-/** Таблицы без политик для authenticated (чат — S06) + членство (читается только своя строка). */
-const CLOSED_TABLES = ["conversations", "messages", "processed_updates"] as const;
+/** Таблицы без политик для authenticated + членство (читается только своя строка). */
+const CLOSED_TABLES = ["processed_updates"] as const;
+/** Чат: менеджер читает диалоги и сообщения своего ресторана (S06), писать не может — журнал пишет бот. Подробно — chat.integration.test.ts. */
+const CHAT_TABLES = ["conversations", "messages"] as const;
 /** Заявки: менеджер читает свои (S05), писать не может — статусы только через RPC. */
 const REQUEST_TABLES = ["booking_requests", "guest_requests"] as const;
-const ALL_TABLES = [...CATALOG_TABLES, "restaurant_managers", ...CLOSED_TABLES, ...REQUEST_TABLES];
+const ALL_TABLES = [...CATALOG_TABLES, "restaurant_managers", ...CLOSED_TABLES, ...CHAT_TABLES, ...REQUEST_TABLES];
 
 const runId = Math.random().toString(36).slice(2, 8);
 const TEST_UPDATE_ID = -Math.floor(Math.random() * 1_000_000_000) - 1; // отрицательный: не пересекается с настоящими
@@ -224,10 +226,20 @@ describe.skipIf(!enabled)("RLS: справочники и закрытые та�
       expect(rows[0]?.restaurant_id).toBe(A.restaurantId);
     });
 
-    it("не видит чат (политик нет до S06), хотя данные в нём есть", async () => {
+    it("не видит закрытые таблицы (processed_updates), хотя данные в них могут быть", async () => {
       for (const table of CLOSED_TABLES) expect(await visibleRows(managerA, table)).toBe(0);
-      // данные действительно существуют — иначе проверка выше ничего бы не доказывала
-      expect(await visibleRows(service, "conversations")).toBeGreaterThan(0);
+    });
+
+    it("видит диалоги и сообщения только своего ресторана, не чужого", async () => {
+      const conversations = must(await managerA.from("conversations").select("restaurant_id"), "conversations");
+      expect(conversations.length).toBeGreaterThan(0);
+      expect(conversations.every((r) => r.restaurant_id === A.restaurantId)).toBe(true);
+      expect(await visibleRows(managerA, "messages")).toBeGreaterThan(0);
+      // чужие диалоги существуют (данные есть), но менеджер A их не получает
+      const foreign = must(await service.from("conversations").select("id").eq("restaurant_id", B.restaurantId), "foreign conversations");
+      expect(foreign.length).toBeGreaterThan(0);
+      const seen = must(await managerA.from("conversations").select("id").in("id", foreign.map((r) => r.id)), "foreign visible");
+      expect(seen).toEqual([]);
     });
 
     it("видит заявки только своего ресторана, не чужого", async () => {

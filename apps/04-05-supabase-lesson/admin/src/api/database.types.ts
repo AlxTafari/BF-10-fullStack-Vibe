@@ -124,6 +124,9 @@ export type Database = {
           external_user_id: number
           id: string
           last_message_at: string | null
+          last_message_direction: string | null
+          last_message_preview: string | null
+          manager_last_read_at: string | null
           restaurant_id: string
           state: Json
         }
@@ -135,6 +138,9 @@ export type Database = {
           external_user_id: number
           id?: string
           last_message_at?: string | null
+          last_message_direction?: string | null
+          last_message_preview?: string | null
+          manager_last_read_at?: string | null
           restaurant_id: string
           state?: Json
         }
@@ -146,6 +152,9 @@ export type Database = {
           external_user_id?: number
           id?: string
           last_message_at?: string | null
+          last_message_direction?: string | null
+          last_message_preview?: string | null
+          manager_last_read_at?: string | null
           restaurant_id?: string
           state?: Json
         }
@@ -382,6 +391,7 @@ export type Database = {
           created_at: string
           direction: string
           id: string
+          kind: string
           text: string
         }
         Insert: {
@@ -389,6 +399,7 @@ export type Database = {
           created_at?: string
           direction: string
           id?: string
+          kind?: string
           text: string
         }
         Update: {
@@ -396,6 +407,7 @@ export type Database = {
           created_at?: string
           direction?: string
           id?: string
+          kind?: string
           text?: string
         }
         Relationships: [
@@ -502,7 +514,48 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      count_unread_conversations: { Args: never; Returns: number }
+      get_messages_page: {
+        Args: {
+          p_before_created_at: string
+          p_before_id: string
+          p_conversation_id: string
+          p_limit: number
+        }
+        Returns: {
+          conversation_id: string
+          created_at: string
+          direction: string
+          id: string
+          kind: string
+          text: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "messages"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       is_manager_of: { Args: { p_restaurant_id: string }; Returns: boolean }
+      list_conversations_page: {
+        Args: { p_before_at: string; p_before_id: string; p_limit: number }
+        Returns: {
+          channel: string
+          created_at: string
+          display_name: string
+          id: string
+          last_message_at: string
+          last_message_direction: string
+          last_message_preview: string
+          manager_last_read_at: string
+          unread_count: number
+        }[]
+      }
+      mark_conversation_read: {
+        Args: { p_conversation_id: string; p_up_to: string }
+        Returns: undefined
+      }
       set_booking_status: {
         Args: { p_from: string; p_id: string; p_to: string }
         Returns: {

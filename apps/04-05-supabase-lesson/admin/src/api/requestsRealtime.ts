@@ -50,7 +50,7 @@ export function startRequestsRealtime(
       } else if (hasRowShape(payload.new)) {
         const row = payload.new as BookingRequest;
         mergeBookingEvent(dispatch, getState, { type: payload.eventType, row });
-        dispatch(requestsApi.util.invalidateTags(["OpenCounts"]));
+        dispatch(requestsApi.util.invalidateTags(["OpenCounts", "ConversationRequests"]));
         // Карточка исходной брони показывает её ожидающее изменение — оно могло появиться или закрыться.
         if (row.replaces_id) {
           dispatch(requestsApi.util.invalidateTags([{ type: "Booking", id: pendingChangeTag(row.replaces_id) }]));
@@ -65,7 +65,7 @@ export function startRequestsRealtime(
       } else if (hasRowShape(payload.new)) {
         const row = payload.new as GuestRequest;
         mergeGuestRequestEvent(dispatch, getState, { type: payload.eventType, row });
-        dispatch(requestsApi.util.invalidateTags(["OpenCounts"]));
+        dispatch(requestsApi.util.invalidateTags(["OpenCounts", "ConversationRequests"]));
         if (payload.eventType === "INSERT") handlers.onNewGuestRequest(row);
       }
     })
@@ -76,7 +76,7 @@ export function startRequestsRealtime(
         // подписки), потеряны безвозвратно — перечитываем всё. На первом подключении тоже: список обычно
         // загружается раньше, чем подписка успевает стать SUBSCRIBED.
         dispatch(
-          requestsApi.util.invalidateTags(["BookingList", "GuestRequestList", "Booking", "GuestRequest", "OpenCounts"]),
+          requestsApi.util.invalidateTags(["BookingList", "GuestRequestList", "Booking", "GuestRequest", "OpenCounts", "ConversationRequests"]),
         );
       } else {
         // CHANNEL_ERROR / TIMED_OUT / CLOSED. supabase-js переподключается сам; вернётся SUBSCRIBED — перечитаем.

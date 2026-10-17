@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import { type GuestRequest, useGetGuestRequestQuery, useSetGuestRequestStatusMutation } from "@/api/requestsApi";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { OpenConversationLink } from "@/features/chat/OpenConversationLink";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { type GuestRequestStatus, allowedGuestRequestActions } from "@/domain/guestRequestStatus";
@@ -85,6 +86,7 @@ function Details({ request, timeZone }: { request: GuestRequest; timeZone: strin
           <dd>{formatInZone(request.updated_at, timeZone)}</dd>
         </div>
       </dl>
+      <OpenConversationLink conversationId={request.conversation_id} />
       {actions.length > 0 && (
         <SheetFooter className="flex-row flex-wrap gap-2 p-0">
           {actions.map((a) => (
