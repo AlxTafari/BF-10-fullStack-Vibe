@@ -17,6 +17,7 @@ import {
   SEARCH_TOO_MANY,
 } from "../../_shared/content.ts";
 import { formatDishCard } from "../../_shared/domain/formatDishCard.ts";
+import type { MessageKind } from "../../_shared/types.ts";
 import { getDishDetails, listMenuCategories, searchMenu } from "../../_shared/services/menu.ts";
 import type { HandlerContext } from "../context.ts";
 import { reply } from "../logging.ts";
@@ -45,31 +46,35 @@ export async function handleCategory(ctx: HandlerContext, categoryId: string): P
   await reply(ctx, result.hasMore ? `${prompt}\n${CATEGORY_TRUNCATED}` : prompt, dishListKeyboard(result.items, BACK_TO_CATEGORIES));
 }
 
-export async function handleDish(ctx: HandlerContext, dishId: string): Promise<void> {
+/** kind = 'search', когда карточку показываем как ответ на поисковый запрос (handleSearch); по кнопке — 'text'. */
+export async function handleDish(ctx: HandlerContext, dishId: string, kind: MessageKind = "text"): Promise<void> {
   const dish = await getDishDetails(ctx.client, { dishId });
   if (!dish) {
-    await reply(ctx, DISH_NOT_FOUND, MENU_AND_HOME_KEYBOARD);
+    await reply(ctx, DISH_NOT_FOUND, MENU_AND_HOME_KEYBOARD, kind);
     return;
   }
   const category = dish.categoryId ? { id: dish.categoryId, name: dish.categoryName } : null;
-  await reply(ctx, formatDishCard(dish.card), dishCardKeyboard(category));
+  await reply(ctx, formatDishCard(dish.card), dishCardKeyboard(category), kind);
 }
 
-/** Свободный текст гостя = поиск блюда по названию (S02). */
+/**
+ * Свободный текст гостя = поиск блюда по названию (S02). Все ответы бота здесь пишутся как kind = 'search':
+ * запрос гостя (router) и ответ на него — шум с коротким сроком хранения (S06c).
+ */
 export async function handleSearch(ctx: HandlerContext, text: string): Promise<void> {
   const result = await searchMenu(ctx.client, { query: text });
   if (!result.ok) {
-    await reply(ctx, SEARCH_HINT, MENU_AND_HOME_KEYBOARD);
+    await reply(ctx, SEARCH_HINT, MENU_AND_HOME_KEYBOARD, "search");
     return;
   }
   if (result.items.length === 0) {
-    await reply(ctx, SEARCH_NOT_FOUND, MENU_AND_HOME_KEYBOARD);
+    await reply(ctx, SEARCH_NOT_FOUND, MENU_AND_HOME_KEYBOARD, "search");
     return;
   }
   if (result.items.length === 1) {
-    await handleDish(ctx, result.items[0].id);
+    await handleDish(ctx, result.items[0].id, "search");
     return;
   }
   const prompt = result.hasMore ? SEARCH_TOO_MANY : SEARCH_CHOOSE;
-  await reply(ctx, prompt, dishListKeyboard(result.items, BACK_TO_MENU));
+  await reply(ctx, prompt, dishListKeyboard(result.items, BACK_TO_MENU), "search");
 }

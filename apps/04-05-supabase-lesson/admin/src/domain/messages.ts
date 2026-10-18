@@ -7,8 +7,11 @@ export interface Message {
   id: string;
   conversation_id: string;
   direction: "in" | "out";
-  /** text — обычное сообщение, button — нажатие кнопки гостем (текст «[кнопка] <callback_data>»). */
-  kind: "text" | "button";
+  /**
+   * text — обычное сообщение, button — нажатие кнопки гостем (текст «[кнопка] <callback_data>»),
+   * search — поиск блюда свободным текстом и ответ бота на него (живёт 7 дней, S06c).
+   */
+  kind: "text" | "button" | "search";
   text: string;
   created_at: string;
 }
@@ -52,9 +55,13 @@ export function applyMessageEvent(cache: Page<Message>, message: Message, conver
   return { ...cache, rows: [...rows.slice(0, at), message, ...rows.slice(at)] };
 }
 
-/** Как рисовать: пузырь или приглушённая строка «Нажата кнопка». Классификация по kind, не по префиксу текста. */
-export function classifyMessage(message: Message): "bubble" | "button" {
-  return message.kind === "button" ? "button" : "bubble";
+/**
+ * Как рисовать: пузырь, приглушённый пузырь поиска или строка «Нажата кнопка». Классификация по kind, не по
+ * префиксу текста. Поиск показываем (менеджеру интересно, чего ищут), но тише обычной реплики.
+ */
+export function classifyMessage(message: Message): "bubble" | "search" | "button" {
+  if (message.kind === "button") return "button";
+  return message.kind === "search" ? "search" : "bubble";
 }
 
 const BUTTON_PREFIX = "[кнопка] ";

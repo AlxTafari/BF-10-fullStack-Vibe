@@ -1,6 +1,18 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { MENU_BOOKING, MENU_FAQ, MENU_INFO, MENU_MAIN, MENU_MANAGER, MENU_MENU, MENU_MY } from "../_shared/content.ts";
+import {
+  MENU_BOOKING,
+  MENU_FAQ,
+  MENU_INFO,
+  MENU_MAIN,
+  MENU_MANAGER,
+  MENU_MENU,
+  MENU_MY,
+  RATE_LIMIT_WARNING,
+  TEXT_TOO_LONG,
+} from "../_shared/content.ts";
 import { isFlowCallback, parseBookingCallback, parseCallback, parseFlowCallback } from "../_shared/domain/callbackData.ts";
+import { countsTowardRateLimit, isTooLong } from "../_shared/domain/antispam.ts";
+import { checkGuestRate } from "../_shared/services/antispam.ts";
 import { openConversation } from "../_shared/services/conversations.ts";
 import { getFlowState } from "../_shared/services/flow.ts";
 import { registerUpdate } from "../_shared/services/updates.ts";
@@ -61,12 +73,42 @@ async function buildContext(
   return { client: deps.client, tg: deps.tg, chatId, username: from.username ?? null, conversation };
 }
 
+/**
+ * Антиспам-ворота (S06c): true — апдейт пропускаем дальше, false — обработка окончена (отброшен или предупреждён).
+ * Стоит ДО записи в messages: отброшенное в БД не попадает. Диалог к этому моменту уже есть (первое сообщение
+ * гостя всегда проходит лимит), так что «отброшенный» апдейт новых диалогов не плодит.
+ */
+async function passesRateLimit(deps: Deps, ctx: HandlerContext, counts: boolean): Promise<boolean> {
+  if (!counts) return true;
+  const decision = await checkGuestRate(deps.client, ctx.conversation.external_user_id);
+  if (decision === "drop") return false;
+  if (decision === "warn") {
+    // Предупреждение — служебное, в messages не пишем (не часть диалога по существу).
+    await deps.tg.sendMessage(ctx.chatId, RATE_LIMIT_WARNING);
+    return false;
+  }
+  return true;
+}
+
 async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void> {
   const ctx = await buildContext(deps, message.from, message.chat.id);
   if (!ctx) return;
 
   const text = message.text?.trim() ?? "";
-  await logIncoming(ctx, text);
+  // Живой сценарий забирает текст себе (имя, число гостей…); иначе свободный текст — поиск блюда (S02).
+  const flowState = getFlowState(ctx.conversation);
+
+  // Шаги брони (имя, контакт, число гостей…) — быстрый легитимный ввод, в лимит частоты не идут.
+  if (!(await passesRateLimit(deps, ctx, countsTowardRateLimit({ isFlowCallback: false, hasLiveFlow: !!flowState })))) return;
+  if (isTooLong(text)) {
+    // Текст не пишем в БД и не обрабатываем; в ответе его не цитируем.
+    await deps.tg.sendMessage(ctx.chatId, TEXT_TOO_LONG);
+    return;
+  }
+
+  // kind определяем до записи: текст, ушедший в поиск блюда, — шум с коротким сроком хранения (S06c).
+  const isCommand = START_COMMAND.test(text) || CANCEL_COMMAND.test(text);
+  await logIncoming(ctx, text, !isCommand && !flowState ? "search" : "text");
 
   // /start и /cancel сбрасывают сценарий в любой момент.
   if (START_COMMAND.test(text)) {
@@ -79,8 +121,6 @@ async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void
     return;
   }
 
-  // Живой сценарий забирает текст себе (имя, число гостей…); иначе свободный текст — поиск блюда (S02).
-  const flowState = getFlowState(ctx.conversation);
   if (flowState) {
     await handleFlowText(ctx, flowState, text);
     return;
@@ -96,6 +136,9 @@ async function handleCallbackQuery(deps: Deps, cq: TelegramCallbackQuery): Promi
   if (!ctx) return;
 
   const data = cq.data ?? "";
+  // Кнопки сценария (flow:…) в лимит не идут; нажатия меню/FAQ/категорий — идут.
+  // answerCallbackQuery уже отправлен выше, поэтому у отброшенной кнопки «часики» не крутятся.
+  if (!(await passesRateLimit(deps, ctx, countsTowardRateLimit({ isFlowCallback: isFlowCallback(data), hasLiveFlow: false })))) return;
   await logIncoming(ctx, `[кнопка] ${data}`, "button");
 
   // Кнопки сценария: flow:<draftId>:<действие>. Чужой draftId = старая сводка в чате — ничего не меняем.

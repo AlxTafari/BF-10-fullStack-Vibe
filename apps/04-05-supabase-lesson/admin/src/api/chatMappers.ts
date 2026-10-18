@@ -13,7 +13,7 @@ export function toMessage(row: unknown): Message | null {
   if (!isRecord(row)) return null;
   const { id, conversation_id, direction: dir, kind, text, created_at } = row;
   if (!str(id) || !str(conversation_id) || !direction(dir) || !str(text) || !str(created_at)) return null;
-  if (kind !== "text" && kind !== "button") return null;
+  if (kind !== "text" && kind !== "button" && kind !== "search") return null;
   return { id, conversation_id, direction: dir, kind, text, created_at };
 }
 

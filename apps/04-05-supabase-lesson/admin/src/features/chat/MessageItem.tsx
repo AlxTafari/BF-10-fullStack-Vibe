@@ -17,17 +17,24 @@ export function MessageItem({ message, timeZone }: { message: Message; timeZone:
   }
 
   const fromGuest = message.direction === "in";
+  // Поиск по меню: тот же пузырь, но приглушённый и с подписью — шум, который менеджеру виден, не кричит.
+  const isSearch = classifyMessage(message) === "search";
   return (
     <div className={cn("flex", fromGuest ? "justify-start" : "justify-end")}>
       <div
         className={cn(
           "max-w-[80%] rounded-lg px-3 py-2 text-sm",
-          fromGuest ? "bg-muted" : "bg-primary text-primary-foreground",
+          isSearch
+            ? "border border-dashed bg-transparent text-muted-foreground"
+            : fromGuest
+              ? "bg-muted"
+              : "bg-primary text-primary-foreground",
         )}
       >
+        {isSearch && <p className="mb-1 text-[10px] uppercase tracking-wide">Поиск по меню</p>}
         {/* pre-wrap: боты пишут многострочно; break-words: длинное слово без пробелов не ломает вёрстку */}
         <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.text}</p>
-        <p className={cn("mt-1 text-right text-[10px]", fromGuest ? "text-muted-foreground" : "text-primary-foreground/70")}>
+        <p className={cn("mt-1 text-right text-[10px]", fromGuest || isSearch ? "text-muted-foreground" : "text-primary-foreground/70")}>
           {formatTimeHM(message.created_at, timeZone)}
         </p>
       </div>

@@ -16,7 +16,8 @@ import { cn } from "@/lib/utils";
 export const guestName = (c: { id: string; display_name: string | null }) => c.display_name?.trim() || `Гость ${c.id.slice(0, 4)}`;
 
 function previewText(c: ConversationRow): string {
-  if (c.last_message_preview === null) return "Нажатия кнопок";
+  // null: гость писал только кнопками/поиском, либо превью стёрт ретеншном вместе с текстом (S06c).
+  if (c.last_message_preview === null) return "Нет текстовых сообщений";
   // Превью — недоверенный текст гостя: React экранирует, ссылкой не становится.
   return `${c.last_message_direction === "out" ? "Бот" : "Гость"}: ${c.last_message_preview}`;
 }

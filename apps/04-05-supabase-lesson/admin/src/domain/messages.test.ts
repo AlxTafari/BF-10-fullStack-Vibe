@@ -80,6 +80,11 @@ describe("classifyMessage / buttonData", () => {
     expect(classifyMessage(msg(2, { kind: "text", text: "[кнопка] это написал гость руками" }))).toBe("bubble");
   });
 
+  it("поиск — отдельный класс, и для гостя, и для бота", () => {
+    expect(classifyMessage(msg(3, { kind: "search", text: "борщ" }))).toBe("search");
+    expect(classifyMessage(msg(4, { kind: "search", direction: "out" }))).toBe("search");
+  });
+
   it("buttonData отдаёт сырой callback_data", () => {
     expect(buttonData(msg(1, { kind: "button", text: "[кнопка] flow:3f2a:date:2026-10-20" }))).toBe("flow:3f2a:date:2026-10-20");
     expect(buttonData(msg(2, { text: "обычный" }))).toBe("обычный");
