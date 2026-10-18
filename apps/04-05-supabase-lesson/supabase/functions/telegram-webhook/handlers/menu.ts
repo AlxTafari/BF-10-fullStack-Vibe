@@ -20,15 +20,15 @@ import { formatDishCard } from "../../_shared/domain/formatDishCard.ts";
 import type { MessageKind } from "../../_shared/types.ts";
 import { getDishDetails, listMenuCategories, searchMenu } from "../../_shared/services/menu.ts";
 import type { HandlerContext } from "../context.ts";
-import { reply } from "../logging.ts";
+import { reply, replyNav } from "../logging.ts";
 
 export async function handleMenuCategories(ctx: HandlerContext): Promise<void> {
   const categories = await listMenuCategories(ctx.client);
   if (categories.length === 0) {
-    await reply(ctx, MENU_EMPTY, HOME_KEYBOARD);
+    await replyNav(ctx, "cats", MENU_EMPTY, HOME_KEYBOARD);
     return;
   }
-  await reply(ctx, MENU_CATEGORIES_PROMPT, categoriesKeyboard(categories));
+  await replyNav(ctx, "cats", MENU_CATEGORIES_PROMPT, categoriesKeyboard(categories));
 }
 
 export async function handleCategory(ctx: HandlerContext, categoryId: string): Promise<void> {
@@ -43,10 +43,13 @@ export async function handleCategory(ctx: HandlerContext, categoryId: string): P
     return;
   }
   const prompt = categoryPrompt(category.name);
-  await reply(ctx, result.hasMore ? `${prompt}\n${CATEGORY_TRUNCATED}` : prompt, dishListKeyboard(result.items, BACK_TO_CATEGORIES));
+  await replyNav(ctx, `cat:${categoryId}`, result.hasMore ? `${prompt}\n${CATEGORY_TRUNCATED}` : prompt, dishListKeyboard(result.items, BACK_TO_CATEGORIES));
 }
 
-/** kind = 'search', когда карточку показываем как ответ на поисковый запрос (handleSearch); по кнопке — 'text'. */
+/**
+ * kind = 'search', когда карточку показываем как ответ на поисковый запрос (handleSearch): это обычный ответ поиска,
+ * он не чистится и не правится. По кнопке (kind = 'text') карточка — экран «Меню блюд» и обновляет сообщение на месте.
+ */
 export async function handleDish(ctx: HandlerContext, dishId: string, kind: MessageKind = "text"): Promise<void> {
   const dish = await getDishDetails(ctx.client, { dishId });
   if (!dish) {
@@ -54,7 +57,12 @@ export async function handleDish(ctx: HandlerContext, dishId: string, kind: Mess
     return;
   }
   const category = dish.categoryId ? { id: dish.categoryId, name: dish.categoryName } : null;
-  await reply(ctx, formatDishCard(dish.card), dishCardKeyboard(category), kind);
+  const card = formatDishCard(dish.card);
+  if (kind === "search") {
+    await reply(ctx, card, dishCardKeyboard(category), kind);
+    return;
+  }
+  await replyNav(ctx, `dish:${dishId}`, card, dishCardKeyboard(category));
 }
 
 /**

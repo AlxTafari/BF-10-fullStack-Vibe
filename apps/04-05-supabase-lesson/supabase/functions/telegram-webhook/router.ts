@@ -11,7 +11,7 @@ import {
   TEXT_TOO_LONG,
 } from "../_shared/content.ts";
 import { isFlowCallback, parseBookingCallback, parseCallback, parseFlowCallback } from "../_shared/domain/callbackData.ts";
-import { countsTowardRateLimit, isTooLong } from "../_shared/domain/antispam.ts";
+import { countsTowardRateLimit, isTooLong, RATE_LIMIT_WINDOW_SECONDS } from "../_shared/domain/antispam.ts";
 import { checkGuestRate } from "../_shared/services/antispam.ts";
 import { openConversation } from "../_shared/services/conversations.ts";
 import { getFlowState } from "../_shared/services/flow.ts";
@@ -31,7 +31,7 @@ import {
 import { handleBookingAction, handleMyRequests } from "./handlers/myRequests.ts";
 import { handleMainMenu, handleRestaurantInfo, handleStart } from "./handlers/mainMenu.ts";
 import { handleCategory, handleDish, handleMenuCategories, handleSearch } from "./handlers/menu.ts";
-import { logIncoming } from "./logging.ts";
+import { logIncoming, sendTemporary } from "./logging.ts";
 
 // /start и /start@bot_name (так Telegram шлёт команду в группах).
 const START_COMMAND = /^\/start(@\S+)?$/i;
@@ -59,6 +59,8 @@ async function buildContext(
   deps: Deps,
   from: { id: number; first_name: string; username?: string } | undefined,
   chatId: number | undefined,
+  chatType: string | undefined,
+  callbackMessageId: number | null,
 ): Promise<HandlerContext | null> {
   if (!from || chatId === undefined) return null;
   const conversation = await openConversation(deps.client, {
@@ -70,7 +72,15 @@ async function buildContext(
     console.error("restaurants пуст — запусти seed / заполни ресторан");
     return null;
   }
-  return { client: deps.client, tg: deps.tg, chatId, username: from.username ?? null, conversation };
+  return {
+    client: deps.client,
+    tg: deps.tg,
+    chatId,
+    username: from.username ?? null,
+    conversation,
+    isPrivate: chatType === "private",
+    callbackMessageId,
+  };
 }
 
 /**
@@ -83,23 +93,25 @@ async function passesRateLimit(deps: Deps, ctx: HandlerContext, counts: boolean)
   const decision = await checkGuestRate(deps.client, ctx.conversation.external_user_id);
   if (decision === "drop") return false;
   if (decision === "warn") {
-    // Предупреждение — служебное, в messages не пишем (не часть диалога по существу).
-    await deps.tg.sendMessage(ctx.chatId, RATE_LIMIT_WARNING);
+    // Предупреждение — служебное, в messages не пишем (не часть диалога по существу). Через окно лимита
+    // оно теряет смысл (можно писать снова) — бот сам его удаляет.
+    await sendTemporary(ctx, RATE_LIMIT_WARNING, RATE_LIMIT_WINDOW_SECONDS);
     return false;
   }
   return true;
 }
 
 async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void> {
-  const ctx = await buildContext(deps, message.from, message.chat.id);
+  const ctx = await buildContext(deps, message.from, message.chat.id, message.chat.type, null);
   if (!ctx) return;
 
   const text = message.text?.trim() ?? "";
   // Живой сценарий забирает текст себе (имя, число гостей…); иначе свободный текст — поиск блюда (S02).
   const flowState = getFlowState(ctx.conversation);
 
-  // Шаги брони (имя, контакт, число гостей…) — быстрый легитимный ввод, в лимит частоты не идут.
-  if (!(await passesRateLimit(deps, ctx, countsTowardRateLimit({ isFlowCallback: false, hasLiveFlow: !!flowState })))) return;
+  // В лимит идёт только свободный текст вне сценария (поиск блюда): команды и шаги брони — легитимный быстрый ввод.
+  const isCommand = START_COMMAND.test(text) || CANCEL_COMMAND.test(text);
+  if (!(await passesRateLimit(deps, ctx, countsTowardRateLimit({ isCommand, isCallback: false, hasLiveFlow: !!flowState })))) return;
   if (isTooLong(text)) {
     // Текст не пишем в БД и не обрабатываем; в ответе его не цитируем.
     await deps.tg.sendMessage(ctx.chatId, TEXT_TOO_LONG);
@@ -107,7 +119,6 @@ async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void
   }
 
   // kind определяем до записи: текст, ушедший в поиск блюда, — шум с коротким сроком хранения (S06c).
-  const isCommand = START_COMMAND.test(text) || CANCEL_COMMAND.test(text);
   await logIncoming(ctx, text, !isCommand && !flowState ? "search" : "text");
 
   // /start и /cancel сбрасывают сценарий в любой момент.
@@ -132,13 +143,11 @@ async function handleCallbackQuery(deps: Deps, cq: TelegramCallbackQuery): Promi
   // Подтверждаем нажатие сразу — иначе у кнопки в клиенте крутится «часики».
   await deps.tg.answerCallbackQuery(cq.id);
 
-  const ctx = await buildContext(deps, cq.from, cq.message?.chat.id);
+  const ctx = await buildContext(deps, cq.from, cq.message?.chat.id, cq.message?.chat.type, cq.message?.message_id ?? null);
   if (!ctx) return;
 
   const data = cq.data ?? "";
-  // Кнопки сценария (flow:…) в лимит не идут; нажатия меню/FAQ/категорий — идут.
-  // answerCallbackQuery уже отправлен выше, поэтому у отброшенной кнопки «часики» не крутятся.
-  if (!(await passesRateLimit(deps, ctx, countsTowardRateLimit({ isFlowCallback: isFlowCallback(data), hasLiveFlow: false })))) return;
+  // Нажатия кнопок — навигация, в лимит частоты не идут (см. countsTowardRateLimit).
   await logIncoming(ctx, `[кнопка] ${data}`, "button");
 
   // Кнопки сценария: flow:<draftId>:<действие>. Чужой draftId = старая сводка в чате — ничего не меняем.

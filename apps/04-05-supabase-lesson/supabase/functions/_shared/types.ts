@@ -33,6 +33,8 @@ export interface ConversationRow {
   // Состояние пошагового сценария (бронь, обращение), {} = нет сценария. Разбирается через parseFlowState.
   state: Record<string, unknown>;
   last_message_at: string | null;
+  // Последнее навигационное сообщение бота (S06d): { screen, message_id, at, faq_answer_id? }. Разбирается через parseLastNav.
+  last_nav: unknown | null;
 }
 
 export interface FaqRow {

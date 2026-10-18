@@ -9,4 +9,8 @@ export interface HandlerContext {
   /** @username гостя из текущего апдейта (без @), если он у него есть. */
   username: string | null;
   conversation: ConversationRow;
+  /** Личный чат: только в нём бот удаляет дубли и правит сообщения на месте (S06d). */
+  isPrivate: boolean;
+  /** message_id сообщения, под которым нажата кнопка; null для текстовых апдейтов. */
+  callbackMessageId: number | null;
 }

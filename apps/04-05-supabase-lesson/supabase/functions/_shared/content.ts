@@ -247,7 +247,7 @@ export function renderFlowReply(draftId: string, reply: FlowReply): { text: stri
       text = screen.isChange
         ? `Проверьте изменение:\n\n${screen.summary}\n\nЭто запрос на изменение. Текущая бронь остаётся в силе, пока менеджер не подтвердит новую.`
         : screen.flow === "booking"
-        ? `Проверьте заявку:\n\n${screen.summary}\n\nЭто заявка, а не подтверждённая бронь: ответ даст менеджер.`
+        ? `Проверьте заявку:\n\n${screen.summary}\n\nЭто заявка, а не подтверждённая бронь. Менеджер рассмотрит её и ответит вам.`
         : `Проверьте обращение:\n\n${screen.summary}`;
       keyboard = [[btn("✅ Отправить", "send")], [btn("🔄 Начать заново", "restart")], cancel];
       break;

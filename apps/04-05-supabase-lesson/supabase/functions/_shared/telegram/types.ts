@@ -8,7 +8,8 @@ export interface TelegramUser {
 export interface TelegramMessage {
   message_id: number;
   from?: TelegramUser;
-  chat: { id: number };
+  // type = 'private' | 'group' | 'supergroup' | 'channel'; удалять/править сообщения бот умеет только в личных чатах.
+  chat: { id: number; type?: string };
   text?: string;
 }
 

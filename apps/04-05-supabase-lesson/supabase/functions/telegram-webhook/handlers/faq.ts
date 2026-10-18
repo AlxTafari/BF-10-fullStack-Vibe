@@ -8,7 +8,7 @@ import {
 } from "../../_shared/content.ts";
 import { getFaqAnswer, listFaq } from "../../_shared/services/faq.ts";
 import type { HandlerContext } from "../context.ts";
-import { reply } from "../logging.ts";
+import { reply, replyFaqAnswer } from "../logging.ts";
 
 export async function handleFaqList(ctx: HandlerContext): Promise<void> {
   const items = await listFaq(ctx.client);
@@ -25,5 +25,5 @@ export async function handleFaqAnswer(ctx: HandlerContext, faqId: string): Promi
     await reply(ctx, FAQ_NOT_FOUND, HOME_KEYBOARD);
     return;
   }
-  await reply(ctx, `${faq.question}\n\n${faq.answer}`, FAQ_ANSWER_KEYBOARD);
+  await replyFaqAnswer(ctx, `${faq.question}\n\n${faq.answer}`, FAQ_ANSWER_KEYBOARD);
 }

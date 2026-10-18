@@ -10,7 +10,8 @@ import { getRestaurant } from "../repositories/restaurantsRepo.ts";
 import type { BookingRequestRow, GuestRequestRow } from "../types.ts";
 
 /** Отправка текста в чат. Сервис не знает про Telegram (ADR-008): функцию даёт обработчик. */
-export type SendText = (chatId: number, text: string) => Promise<void>;
+// Возвращаемое значение (message_id) сервису не нужно.
+export type SendText = (chatId: number, text: string) => Promise<unknown>;
 
 export type ManagerNotification =
   | { kind: "booking"; request: BookingRequestRow }

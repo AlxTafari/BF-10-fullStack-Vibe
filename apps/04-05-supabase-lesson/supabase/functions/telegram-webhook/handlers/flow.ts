@@ -15,11 +15,15 @@ import type { FlowInput, FlowReply, FlowState } from "../../_shared/domain/flowS
 import { cancelFlow, continueFlow, isDraftSubmitted, startFlow, submitFlow } from "../../_shared/services/flow.ts";
 import { notifyManager } from "../../_shared/services/managerNotification.ts";
 import type { HandlerContext } from "../context.ts";
-import { reply } from "../logging.ts";
+import { reply, replyNav } from "../logging.ts";
 
+/**
+ * Экран сценария. Все шаги одного черновика перерисовывают одно и то же сообщение (replyNav, экран `flow:<draftId>`),
+ * а не плодят новое на каждый шаг; новый черновик (или «Забронировать» из меню) — новое сообщение.
+ */
 export async function showFlowScreen(ctx: HandlerContext, draftId: string, flowReply: FlowReply): Promise<void> {
   const { text, keyboard } = renderFlowReply(draftId, flowReply);
-  await reply(ctx, text, keyboard);
+  await replyNav(ctx, `flow:${draftId}`, text, keyboard);
 }
 
 /** «📅 Забронировать» и «💬 Связаться с менеджером»: новый сценарий вместо прежнего. */
@@ -35,8 +39,11 @@ export async function resetFlow(ctx: HandlerContext): Promise<void> {
 }
 
 export async function handleCancelCommand(ctx: HandlerContext): Promise<void> {
+  // draftId берём до сброса: «Отменено» заменяет собой сообщение сценария, а не висит под ним.
+  const draftId = ctx.conversation.state.draftId;
   await resetFlow(ctx);
-  await reply(ctx, FLOW_CANCELLED, MAIN_MENU_KEYBOARD);
+  if (typeof draftId === "string") await replyNav(ctx, `flow:${draftId}`, FLOW_CANCELLED, MAIN_MENU_KEYBOARD);
+  else await reply(ctx, FLOW_CANCELLED, MAIN_MENU_KEYBOARD);
 }
 
 /**
@@ -55,7 +62,7 @@ export async function handleFlowText(ctx: HandlerContext, state: FlowState, text
 export async function handleFlowAction(ctx: HandlerContext, state: FlowState, action: string): Promise<void> {
   if (action === "cancel") {
     await cancelFlow(ctx.client, ctx.conversation.id);
-    await reply(ctx, FLOW_CANCELLED, MAIN_MENU_KEYBOARD);
+    await replyNav(ctx, `flow:${state.draftId}`, FLOW_CANCELLED, MAIN_MENU_KEYBOARD);
     return;
   }
   await advance(ctx, state, { type: "action", action });
@@ -78,14 +85,14 @@ async function submit(ctx: HandlerContext, state: FlowState): Promise<void> {
   } catch (error) {
     // Вставка упала, состояние не очищено: повторное «Отправить» вернёт ту же заявку (идемпотентность).
     console.error("создание заявки не удалось:", error);
-    await reply(ctx, SUBMIT_FAILED, retrySubmitKeyboard(state.draftId));
+    await replyNav(ctx, `flow:${state.draftId}`, SUBMIT_FAILED, retrySubmitKeyboard(state.draftId));
     return;
   }
 
   if (!result.ok && "replaces" in result.errors) {
     // Исходную бронь уже нельзя менять (отменена, прошла, изменение уже запрошено): сценарий закрываем.
     await cancelFlow(ctx.client, ctx.conversation.id);
-    await reply(ctx, CHANGE_REJECTED, MAIN_MENU_KEYBOARD);
+    await replyNav(ctx, `flow:${state.draftId}`, CHANGE_REJECTED, MAIN_MENU_KEYBOARD, true);
     return;
   }
 
@@ -101,22 +108,20 @@ async function submit(ctx: HandlerContext, state: FlowState): Promise<void> {
     : result.request.replaces_id
     ? CHANGE_SENT
     : BOOKING_SENT;
-  try {
-    // Отвечает только тот, кто первым закрыл черновик: при двойном тапе остальные обработки молчат,
-    // а то гость получит серию одинаковых «заявка передана».
-    if (result.claimed) await reply(ctx, sentText, MAIN_MENU_KEYBOARD);
-  } finally {
-    // Только для только что созданной заявки: повтор не должен слать менеджеру второе уведомление.
-    // finally — чтобы сбой ответа гостю не лишил менеджера уведомления.
-    if (result.created) {
-      const send = (chatId: number, text: string) => ctx.tg.sendMessage(chatId, text);
-      await notifyManager(
-        ctx.client,
-        send,
-        result.kind === "booking"
-          ? { kind: "booking", request: result.request }
-          : { kind: "guest_request", request: result.request },
-      );
-    }
+  // Менеджера уведомляем ПЕРВЫМ: итог для гостя должен оказаться в чате самым нижним (с кнопками под рукой), а не
+  // уехать вверх под уведомление (так бывает, когда менеджер и гость — один чат). notifyManager не бросает.
+  // Только для только что созданной заявки: повтор не должен слать менеджеру второе уведомление.
+  if (result.created) {
+    const send = (chatId: number, text: string) => ctx.tg.sendMessage(chatId, text);
+    await notifyManager(
+      ctx.client,
+      send,
+      result.kind === "booking"
+        ? { kind: "booking", request: result.request }
+        : { kind: "guest_request", request: result.request },
+    );
   }
+  // Отвечает только тот, кто первым закрыл черновик: при двойном тапе остальные обработки молчат,
+  // а то гость получит серию одинаковых «заявка передана». Итог рисуется заново внизу, сводка удаляется.
+  if (result.claimed) await replyNav(ctx, `flow:${state.draftId}`, sentText, MAIN_MENU_KEYBOARD, true);
 }

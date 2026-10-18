@@ -69,3 +69,40 @@ export async function findConversationById(client: SupabaseClient, id: string): 
   if (error) throw error;
   return data as ConversationRow | null;
 }
+
+/** CAS по message_id последнего навигационного сообщения (RPC set_last_nav). true — запись обновилась. */
+export async function casLastNav(
+  client: SupabaseClient,
+  input: { conversationId: string; expected: number | null; screen: string; messageId: number },
+): Promise<boolean> {
+  const { data, error } = await client.rpc("set_last_nav", {
+    p_conversation_id: input.conversationId,
+    p_expected: input.expected,
+    p_screen: input.screen,
+    p_message_id: input.messageId,
+  });
+  if (error) throw error;
+  return data === true;
+}
+
+/** CAS по faq_answer_id (RPC set_faq_answer): swapped и прежний ответ FAQ (у него надо снять клавиатуру). */
+export async function casFaqAnswer(
+  client: SupabaseClient,
+  input: { conversationId: string; expected: number | null; messageId: number },
+): Promise<{ swapped: boolean; previousId: number | null }> {
+  const { data, error } = await client.rpc("set_faq_answer", {
+    p_conversation_id: input.conversationId,
+    p_expected: input.expected,
+    p_new: input.messageId,
+  });
+  if (error) throw error;
+  const row = (Array.isArray(data) ? data[0] : data) as { swapped?: boolean; previous_id?: number | null } | undefined;
+  return { swapped: row?.swapped === true, previousId: row?.previous_id ?? null };
+}
+
+/** Свежий last_nav из БД (сырой jsonb) — после проигранного CAS, когда снимок из начала апдейта устарел. */
+export async function fetchLastNav(client: SupabaseClient, conversationId: string): Promise<unknown> {
+  const { data, error } = await client.from("conversations").select("last_nav").eq("id", conversationId).maybeSingle();
+  if (error) throw error;
+  return (data as { last_nav?: unknown } | null)?.last_nav ?? null;
+}

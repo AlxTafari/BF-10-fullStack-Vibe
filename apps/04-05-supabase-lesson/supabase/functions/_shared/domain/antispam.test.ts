@@ -21,9 +21,11 @@ Deno.test("parseRateDecision: незнакомое значение = allowed (f
   assertEquals(parseRateDecision("что-то новое"), "allowed");
 });
 
-Deno.test("countsTowardRateLimit: сценарий брони в лимит не идёт", () => {
-  assertEquals(countsTowardRateLimit({ isFlowCallback: false, hasLiveFlow: false }), true);
-  assertEquals(countsTowardRateLimit({ isFlowCallback: true, hasLiveFlow: true }), false);
-  assertEquals(countsTowardRateLimit({ isFlowCallback: false, hasLiveFlow: true }), false);
-  assertEquals(countsTowardRateLimit({ isFlowCallback: true, hasLiveFlow: false }), false);
+Deno.test("countsTowardRateLimit: считается только свободный текст вне сценария", () => {
+  assertEquals(countsTowardRateLimit({ isCommand: false, isCallback: false, hasLiveFlow: false }), true);
+  // Команды и кнопки — навигация, в лимит не идут.
+  assertEquals(countsTowardRateLimit({ isCommand: true, isCallback: false, hasLiveFlow: false }), false);
+  assertEquals(countsTowardRateLimit({ isCommand: false, isCallback: true, hasLiveFlow: false }), false);
+  // Текст внутри живого сценария — тоже нет.
+  assertEquals(countsTowardRateLimit({ isCommand: false, isCallback: false, hasLiveFlow: true }), false);
 });

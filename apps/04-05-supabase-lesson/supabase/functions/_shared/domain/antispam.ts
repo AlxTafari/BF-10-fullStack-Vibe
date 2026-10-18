@@ -25,10 +25,12 @@ export function parseRateDecision(value: unknown): RateDecision {
 }
 
 /**
- * Считать ли апдейт в лимит частоты. Не считаем то, что гость делает внутри живого сценария брони/обращения:
- * имя, контакт, число гостей, комментарий и нажатия «дата → время → подтвердить» — легитимные быстрые
- * шаги, 3 за 30 секунд там нормальны. Все остальные (меню, FAQ, поиск, свободный текст вне сценария) — считаем.
+ * Считать ли апдейт в лимит частоты. Считаем только свободный текст вне сценария — то есть поиск блюда: это единственный
+ * вход, где гость может завалить бота произвольными сообщениями. Не считаем:
+ *  - команды (/start, /cancel) и нажатия кнопок меню/FAQ/категорий — навигация, гость листает разделы быстро, а лимит
+ *    «3 за 30 с» упирался в него почти сразу; повторы экранов гасит антидубль (S06d);
+ *  - всё внутри живого сценария брони/обращения (имя, контакт, число гостей, «дата → время → подтвердить»).
  */
-export function countsTowardRateLimit(input: { isFlowCallback: boolean; hasLiveFlow: boolean }): boolean {
-  return !input.isFlowCallback && !input.hasLiveFlow;
+export function countsTowardRateLimit(input: { isCommand: boolean; isCallback: boolean; hasLiveFlow: boolean }): boolean {
+  return !input.isCommand && !input.isCallback && !input.hasLiveFlow;
 }
