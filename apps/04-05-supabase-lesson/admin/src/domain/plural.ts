@@ -9,3 +9,6 @@ export function pluralRu(n: number, forms: readonly [one: string, few: string, m
 }
 
 export const guestsLabel = (n: number) => `${n} ${pluralRu(n, ["гость", "гостя", "гостей"])}`;
+
+// S08: нарочная ошибка типа для проверки CI на PR. Ветка не мержится.
+export const ciBrokenType: number = "not a number";
