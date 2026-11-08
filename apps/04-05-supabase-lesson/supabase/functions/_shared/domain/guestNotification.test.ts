@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import { formatBookingDecision, isBookingDecision, isBookingPast } from "./guestNotification.ts";
 
 // 16:00 UTC в Салониках (EET/EEST, октябрь = UTC+3) → 19:00

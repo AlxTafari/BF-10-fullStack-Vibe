@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { validateSlot, type SlotError } from "../domain/bookingRules.ts";
 import {
   type FieldError,

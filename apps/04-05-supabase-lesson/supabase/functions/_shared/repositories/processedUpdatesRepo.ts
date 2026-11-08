@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Отмечает апдейт Telegram обработанным. Возвращает false, если такой update_id уже был

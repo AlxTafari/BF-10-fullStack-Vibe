@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals } from "@std/assert";
 import { decideNav, DUPLICATE_WINDOW_SECONDS, type LastNav, parseFaqAnswerId, parseLastNav, sectionOf } from "./navigation.ts";
 
 const NOW = new Date("2026-10-18T10:05:00Z");

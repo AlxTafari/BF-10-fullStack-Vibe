@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals } from "@std/assert";
 import { isMessageGoneError, isNotModifiedError, TelegramApiError } from "./client.ts";
 
 const e = (code: number, description: string) => new TelegramApiError("editMessageText", code, description);

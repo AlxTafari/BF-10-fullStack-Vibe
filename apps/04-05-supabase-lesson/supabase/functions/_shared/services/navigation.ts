@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseLastNav, type LastNav } from "../domain/navigation.ts";
 import { casFaqAnswer, casLastNav, fetchLastNav } from "../repositories/conversationsRepo.ts";
 

@@ -3,7 +3,7 @@
 //
 // Отрицательные id — граница между тестом и реальностью: у настоящих пользователей Telegram и у настоящих апдейтов
 // id положительные, поэтому cleanup() не может задеть живого гостя или чужой апдейт.
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { InlineKeyboardButton, TelegramUpdate } from "../../_shared/telegram/types.ts";
 import { routeUpdate } from "../router.ts";
 import type { FakeMessage, FakeTelegram } from "./fakeTelegram.ts";

@@ -1,7 +1,7 @@
 // Интеграционный тест идемпотентности заявок (ADR-006) против dev-БД.
 // Запуск: deno test --allow-env --allow-net --allow-read --env-file=../../.env _shared/services/requests.integration.test.ts
 // Без SUPABASE_URL тест пропускается. Создаёт свои строки (диалог с отрицательным external_user_id) и удаляет их.
-import { assert, assertEquals } from "jsr:@std/assert@1";
+import { assert, assertEquals } from "@std/assert";
 import { availableDates } from "../domain/bookingRules.ts";
 import { upsertConversation } from "../repositories/conversationsRepo.ts";
 import { getRestaurant } from "../repositories/restaurantsRepo.ts";

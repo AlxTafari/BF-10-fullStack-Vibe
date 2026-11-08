@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import { formatRestaurantInfo, NO_DATA } from "./formatRestaurantInfo.ts";
 
 const full = {

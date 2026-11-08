@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * `insert … on conflict (idempotency_key) do nothing` и возврат строки в любом случае.

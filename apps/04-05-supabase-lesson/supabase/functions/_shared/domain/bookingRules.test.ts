@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals } from "@std/assert";
 import { availableDates, availableHours, availablePeriods, type BookingEnv, validateSlot } from "./bookingRules.ts";
 
 // Вт–Вс 13:00–24:00, понедельник выходной (как в seed).

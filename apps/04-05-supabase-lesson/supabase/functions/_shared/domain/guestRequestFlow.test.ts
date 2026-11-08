@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals } from "@std/assert";
 import { advanceGuestRequest, startGuestRequest } from "./guestRequestFlow.ts";
 import type { FlowEnv, FlowInput, GuestRequestState } from "./flowState.ts";
 

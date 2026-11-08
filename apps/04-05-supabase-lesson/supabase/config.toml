@@ -388,11 +388,17 @@ deno_version = 2
 # X-Telegram-Bot-Api-Secret-Token (_shared/webhookAuth.ts).
 [functions.telegram-webhook]
 verify_jwt = false
+# Карта импортов — общий deno.json функций (там версии supabase-js и @std/assert, в коде — голые имена).
+# Без явного пути деплой ищет deno.json в каталоге самой функции, а общий в supabase/functions
+# документация Supabase для деплоя не гарантирует (S08).
+import_map = "./functions/deno.json"
 
 # notify-guest вызывает триггер БД (pg_net) без Supabase JWT — вместо него проверяется секрет
 # в заголовке x-notify-secret (_shared/notifyAuth.ts).
 [functions.notify-guest]
 verify_jwt = false
+# Тот же общий deno.json, что у telegram-webhook (см. комментарий выше).
+import_map = "./functions/deno.json"
 
 [analytics]
 enabled = true

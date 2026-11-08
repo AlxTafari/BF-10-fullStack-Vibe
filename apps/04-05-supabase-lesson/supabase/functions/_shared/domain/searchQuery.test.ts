@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals } from "@std/assert";
 import { normalizeSearchQuery, toLikePattern } from "./searchQuery.ts";
 
 Deno.test("trim и схлопывание пробелов", () => {

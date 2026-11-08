@@ -4,6 +4,7 @@
     "strict": true
   },
   "imports": {
-    "@supabase/supabase-js": "npm:@supabase/supabase-js@2"
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2",
+    "@std/assert": "jsr:@std/assert@1"
   }
 }

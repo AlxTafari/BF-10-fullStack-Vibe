@@ -7,7 +7,7 @@
 //
 // Данные блюд берутся из БД, а не из seed.sql: меню в dev правится из админки. Каждый тест — свой гость
 // (лимит текста 3 за 30 с считается на гостя) и своя уборка в finally.
-import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import {
   BOOKING_SENT,
   CANCEL_DONE,

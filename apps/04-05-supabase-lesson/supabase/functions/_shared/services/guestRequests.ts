@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { type FieldError, validateContact, validateRequestText } from "../domain/fieldValidation.ts";
 import { GUEST_REQUEST_KINDS, type GuestRequestKind } from "../domain/flowState.ts";
 import { findGuestRequestByKey, insertGuestRequest } from "../repositories/guestRequestsRepo.ts";

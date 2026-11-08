@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals } from "@std/assert";
 import { buildBookingCallback, buildCallback, buildFlowCallback, parseBookingCallback, parseCallback, parseFlowCallback } from "./callbackData.ts";
 
 const ID = "00000000-0000-0000-0000-00000000b001";

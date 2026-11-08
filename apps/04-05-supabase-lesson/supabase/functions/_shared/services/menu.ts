@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DishCardData } from "../domain/formatDishCard.ts";
 import { normalizeSearchQuery, toLikePattern } from "../domain/searchQuery.ts";
 import { getPublishedItem, listCategoriesWithPublishedItems, listPublishedItems } from "../repositories/menuRepo.ts";

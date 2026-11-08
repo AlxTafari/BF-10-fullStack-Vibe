@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals } from "@std/assert";
 import { countsTowardRateLimit, isTooLong, MAX_GUEST_TEXT_LENGTH, parseRateDecision } from "./antispam.ts";
 
 Deno.test("isTooLong: граница 500/501 символов", () => {

@@ -1,0 +1,101 @@
+# CI/CD гостевого бота ресторана (apps/04-05-supabase-lesson): бот на Edge Functions + админка.
+# Спека — apps/04-05-supabase-lesson/docs/roadmap/sprints/S08-ci-cd.md, разбор файла построчно —
+# apps/04-05-supabase-lesson/docs/guides/ci-cd/02-github-actions-anatomy.md.
+#
+# Сейчас здесь только быстрые проверки (checks). Интеграционные тесты на Supabase в раннере (integration)
+# и выкладка в prod (deploy) добавляются следующими сессиями S08.
+name: Guest bot
+
+on:
+  # Прямой push в main и merge PR (для GitHub merge — тоже push в main).
+  push:
+    branches: [main]
+    paths:
+      - "apps/04-05-supabase-lesson/**"
+      - ".github/workflows/guest-bot.yml"
+  # PR в main: открытие и каждый новый коммит в его ветку. Только проверки, деплоя на PR не будет.
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/04-05-supabase-lesson/**"
+      - ".github/workflows/guest-bot.yml"
+  # Ручной запуск из вкладки Actions.
+  workflow_dispatch:
+
+# Новый коммит в ту же ветку/PR отменяет устаревший прогон проверок: результат старого уже никому не нужен.
+# Деплой (позже) получит свою группу без отмены — миграцию на середине прерывать нельзя.
+concurrency:
+  group: guest-bot-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+# Токен GitHub в job'ах — только на чтение кода. Права шире выдаются job'у явно, когда понадобятся.
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Checks (types, lint, layers, unit tests, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/04-05-supabase-lesson
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Версия pnpm — та же, что локально: pnpm-workspace.yaml использует allowBuilds (pnpm 10+).
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.17.0
+
+      # cache: pnpm кэширует хранилище пакетов по хэшу pnpm-lock.yaml — повторная установка за секунды.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # Deno для check/lint/test бота. Закреплён под локальную версию: формат deno.lock зависит от версии.
+      # На чём функции исполняются в Supabase — решает сам Supabase (edge runtime), не эта строка.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.9.7
+
+      # --frozen-lockfile: lock не совпал с package.json — ошибка, а не тихое обновление версий.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # --- Бот (Edge Functions) ---
+
+      - name: "Bot: layers (ADR-008)"
+        run: pnpm check:layers
+
+      # --frozen у deno — то же, что --frozen-lockfile у pnpm, для supabase/functions/deno.lock.
+      - name: "Bot: deno check"
+        working-directory: apps/04-05-supabase-lesson/supabase/functions
+        run: deno check --frozen .
+
+      - name: "Bot: deno lint"
+        working-directory: apps/04-05-supabase-lesson/supabase/functions
+        run: deno lint
+
+      # Без SUPABASE_URL интеграционные тесты пропускаются сами — здесь идёт только домен.
+      - name: "Bot: unit tests"
+        working-directory: apps/04-05-supabase-lesson/supabase/functions
+        run: deno test --allow-env --frozen
+
+      # --- Админка ---
+
+      - name: "Admin: layers (ADR-008)"
+        run: pnpm --filter 04-05-admin check:layers
+
+      - name: "Admin: typecheck"
+        run: pnpm --filter 04-05-admin typecheck
+
+      - name: "Admin: lint"
+        run: pnpm --filter 04-05-admin lint
+
+      # Сборка без VITE_*: проверка env в supabaseClient срабатывает только в браузере, не при сборке.
+      # Тесты админки (юнит + интеграционные) — в job integration, им нужна БД.
+      - name: "Admin: build"
+        run: pnpm --filter 04-05-admin build

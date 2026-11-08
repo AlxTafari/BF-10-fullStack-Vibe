@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatBookingDecision, isBookingPast } from "../domain/guestNotification.ts";
 import { findBookingById, markBookingGuestNotified } from "../repositories/bookingRequestsRepo.ts";
 import { findConversationById } from "../repositories/conversationsRepo.ts";

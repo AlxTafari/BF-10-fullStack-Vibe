@@ -2,7 +2,7 @@
 // Запуск: deno test --allow-env --allow-net --allow-read --env-file=../../.env _shared/services/navigation.integration.test.ts
 // Без SUPABASE_URL пропускается. Нужна применённая миграция S06d. Создаёт диалог с отрицательным external_user_id
 // и удаляет его.
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals } from "@std/assert";
 import { casFaqAnswer, casLastNav } from "../repositories/conversationsRepo.ts";
 import { createServiceClient } from "../supabaseClient.ts";
 
@@ -90,7 +90,7 @@ Deno.test({
   ...opts,
   ignore: !enabled || !anonKey,
   async fn() {
-    const { createClient } = await import("npm:@supabase/supabase-js@2");
+    const { createClient } = await import("@supabase/supabase-js");
     const anon = createClient(url!, anonKey!);
     const nav = await anon.rpc("set_last_nav", {
       p_conversation_id: "00000000-0000-0000-0000-000000000000",

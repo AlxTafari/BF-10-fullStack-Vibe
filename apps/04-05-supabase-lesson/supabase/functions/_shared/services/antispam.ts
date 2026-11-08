@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseRateDecision, RATE_LIMITS, type RateBucket, type RateDecision } from "../domain/antispam.ts";
 import { checkRateLimit } from "../repositories/rateLimitsRepo.ts";
 

@@ -2,7 +2,7 @@
 // Запуск: deno test --allow-env --allow-net --allow-read --env-file=../../.env _shared/services/antispam.integration.test.ts
 // Без SUPABASE_URL тест пропускается. Нужны применённые миграции S06c и S07 (button_rate_limit). Создаёт строки с отрицательным
 // external_user_id (не пересекается с настоящими Telegram id) и удаляет их.
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals } from "@std/assert";
 import { checkRateLimit } from "../repositories/rateLimitsRepo.ts";
 import { createServiceClient } from "../supabaseClient.ts";
 
@@ -88,7 +88,7 @@ Deno.test({
     const url = Deno.env.get("SUPABASE_URL")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
     if (!anonKey) return; // ключа нет в окружении — проверка пропущена
-    const { createClient } = await import("npm:@supabase/supabase-js@2");
+    const { createClient } = await import("@supabase/supabase-js");
     const anon = createClient(url, anonKey);
     const rpc = await anon.rpc("check_rate_limit", { p_external_user_id: -1, p_max: 3, p_window_seconds: 30 });
     assertEquals(rpc.error !== null, true);

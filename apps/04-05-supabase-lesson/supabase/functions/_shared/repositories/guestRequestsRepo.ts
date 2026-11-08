@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GuestRequestRow, NewGuestRequest } from "../types.ts";
 import { findByIdempotencyKey, insertIdempotent } from "./insertIdempotent.ts";
 

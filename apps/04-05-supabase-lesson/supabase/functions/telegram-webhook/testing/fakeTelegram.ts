@@ -1,5 +1,9 @@
 // Подменный Telegram-клиент для сценарных тестов (S07). Боевой код не знает о нём: роутер получает клиента
 // параметром deps.tg (ADR-008). В настоящий Telegram ничего не уходит.
+
+// Методы подмены объявлены async без await намеренно: так ошибка из throw становится отклонённым Promise,
+// как у настоящего клиента. Без async она вылетала бы синхронно, и подмена вела бы себя иначе, чем боевой код.
+// deno-lint-ignore-file require-await
 import { type TelegramClient, TelegramApiError } from "../../_shared/telegram/client.ts";
 import type { InlineKeyboard } from "../../_shared/telegram/types.ts";
 

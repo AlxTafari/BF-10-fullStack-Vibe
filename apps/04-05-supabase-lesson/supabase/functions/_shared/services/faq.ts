@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPublishedFaq, listPublishedFaq } from "../repositories/faqRepo.ts";
 import { getRestaurant } from "../repositories/restaurantsRepo.ts";
 

@@ -1,9 +1,16 @@
 name: CI
 
+# Только конвертер валют: без paths этот workflow запускался на любой push, в том числе гостевого бота (S08).
 on:
   push:
     branches: [main]
+    paths:
+      - "apps/01-currency-bot/**"
+      - ".github/workflows/ci.yml"
   pull_request:
+    paths:
+      - "apps/01-currency-bot/**"
+      - ".github/workflows/ci.yml"
 
 jobs:
   build:

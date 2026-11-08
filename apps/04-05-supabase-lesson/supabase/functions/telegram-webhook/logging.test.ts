@@ -1,5 +1,5 @@
 // Тесты replyNav / replyFaqAnswer с подменёнными Telegram-клиентом и Supabase (rpc + from).
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals } from "@std/assert";
 import { TelegramApiError } from "../_shared/telegram/client.ts";
 import type { HandlerContext } from "./context.ts";
 import { replyFaqAnswer, replyNav } from "./logging.ts";

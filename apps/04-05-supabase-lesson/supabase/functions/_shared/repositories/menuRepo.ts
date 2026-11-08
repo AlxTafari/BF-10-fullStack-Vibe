@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MenuCategoryRow, MenuItemRow, MenuItemWithCategory } from "../types.ts";
 
 // Явный список колонок вместо select(*): внутренние поля (external_id, source, restaurant_id…) гостю не нужны.

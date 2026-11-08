@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals } from "@std/assert";
 import { formatPrice } from "./formatPrice.ts";
 
 // Intl ставит неразрывный пробел перед символом валюты — для сравнения приводим к обычному.

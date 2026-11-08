@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { assertEquals, assertStringIncludes } from "@std/assert";
 import { ALLERGY_WARNING, formatDishCard, UNAVAILABLE_LABEL, type DishCardData } from "./formatDishCard.ts";
 import { NO_DATA } from "./formatRestaurantInfo.ts";
 
