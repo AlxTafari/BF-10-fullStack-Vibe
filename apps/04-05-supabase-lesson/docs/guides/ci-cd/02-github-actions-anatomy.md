@@ -103,8 +103,8 @@ jobs:
   а наши скрипты (`pnpm check:layers`) объявлены в `package.json` приложения. Шаги Deno переопределяют папку
   на `supabase/functions`: там лежит `deno.json`.
 
-Сейчас job один. В сессиях 2 и 3 добавятся `integration` (параллельно с `checks`) и `deploy` (с
-`needs: [checks, integration]`).
+С сессии 2 job'ов два: `checks` и `integration` идут параллельно, каждый на своей виртуалке (разбор
+`integration` — заметка 03). В сессии 3 добавится `deploy` с `needs: [checks, integration]`.
 
 ## 6. `steps` — шаги
 
@@ -199,3 +199,6 @@ jobs:
   выражения `${{ }}`, несуществующие входы actions.
 - **Ветка + PR** — проверить правку workflow, не трогая `main`. Workflow из ветки PR запускается именно в той
   версии, что в ветке.
+- **Ветка + `workflow_dispatch`** — без PR: `gh workflow run guest-bot.yml --ref <ветка>`. Запустится версия
+  workflow из ветки (сам файл с `workflow_dispatch` должен уже быть в `main`). Так в сессии 2 отлаживался
+  `integration`: два прогона в ветке, в `main` — уже зелёный.

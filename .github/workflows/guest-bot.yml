@@ -2,8 +2,8 @@
 # Спека — apps/04-05-supabase-lesson/docs/roadmap/sprints/S08-ci-cd.md, разбор файла построчно —
 # apps/04-05-supabase-lesson/docs/guides/ci-cd/02-github-actions-anatomy.md.
 #
-# Сейчас здесь только быстрые проверки (checks). Интеграционные тесты на Supabase в раннере (integration)
-# и выкладка в prod (deploy) добавляются следующими сессиями S08.
+# Сейчас здесь быстрые проверки (checks) и интеграционные тесты на Supabase в раннере (integration).
+# Выкладка в prod (deploy) добавляется сессией 3 S08. Разбор integration — docs/guides/ci-cd/03-database-in-ci.md.
 name: Guest bot
 
 on:
@@ -99,3 +99,90 @@ jobs:
       # Тесты админки (юнит + интеграционные) — в job integration, им нужна БД.
       - name: "Admin: build"
         run: pnpm --filter 04-05-admin build
+
+  integration:
+    name: Integration (Supabase in runner, bot + admin tests)
+    runs-on: ubuntu-latest
+    # Зависший контейнер не жжёт минуты дольше 20 минут.
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/04-05-supabase-lesson
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.17.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.9.7
+
+      # CLI ставим отдельным action, а не из node_modules: postinstall пакета supabase (скачивает бинарник)
+      # pnpm не выполняет — в allowBuilds (pnpm-workspace.yaml) разрешён только esbuild.
+      # Версия — та же, что в pnpm-lock.yaml (supabase@2.117.0): локально и в CI один и тот же CLI.
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.117.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Postgres + миграции с нуля + seed.sql. Отключено то, что тестам не нужно: Studio, почта (mailpit),
+      # Storage и прокси картинок, postgres-meta (API для Studio), логи (logflare, vector), пулер (supavisor).
+      # Остаются Postgres, Auth (gotrue), PostgREST, Realtime, Kong (шлюз на :54321) и Edge Runtime.
+      - name: Start Supabase
+        run: supabase start -x studio,mailpit,storage-api,imgproxy,postgres-meta,logflare,vector,supavisor
+
+      # Тот же .env в корне приложения, что локально: его читают deno test (--env-file) и admin/vite.config.ts.
+      # --override-name переименовывает переменные CLI (API_URL, ANON_KEY, …) в имена, которые ждут тесты.
+      # Ключи локального стека — демо-ключи раннера, но файл всё равно не печатаем: проверяем только наличие.
+      - name: Write .env from supabase status
+        run: |
+          supabase status -o env \
+            --override-name api.url=SUPABASE_URL \
+            --override-name auth.anon_key=SUPABASE_ANON_KEY \
+            --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY > .env
+          for key in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
+            grep -q "^${key}=\"\?[^\"]" .env || { echo "::error::${key} не найден в выводе supabase status"; exit 1; }
+          done
+
+      # Функции загружаются, значит импорты найдены (import_map в config.toml). Без секрета функция сама
+      # отвечает 401 с телом "forbidden". Шлюз Kong тоже умеет 401, но с JSON — поэтому сверяем и тело.
+      # Импорт не разрешился — функция не стартует, ответ 5xx.
+      - name: "Bot: functions boot (import_map)"
+        run: |
+          for fn in telegram-webhook notify-guest; do
+            body=$(mktemp)
+            code=$(curl -sS --max-time 90 -o "$body" -w '%{http_code}' -X POST \
+              -H 'content-type: application/json' -d '{}' "http://127.0.0.1:54321/functions/v1/$fn")
+            echo "$fn: HTTP $code, body: $(head -c 200 "$body")"
+            [ "$code" = 401 ] && [ "$(cat "$body")" = forbidden ] || { echo "::error::$fn не отвечает 401 forbidden"; exit 1; }
+          done
+
+      # Все тесты бота: домен + интеграционные на БД раннера, включая сценарии S07.
+      - name: "Bot: all tests"
+        working-directory: apps/04-05-supabase-lesson/supabase/functions
+        run: deno test --allow-env --allow-net --allow-read --env-file=../../.env --frozen
+
+      # Юнит src/ + интеграционные tests/ (RLS, RPC статусов, Realtime, чат).
+      - name: "Admin: all tests"
+        run: pnpm --filter 04-05-admin test
+
+      # Без этого упавший тест разбирается вслепую: виртуалка исчезнет вместе с контейнерами.
+      - name: Supabase logs on failure
+        if: failure()
+        run: |
+          supabase status || true
+          for c in $(docker ps -a --format '{{.Names}}' | grep '^supabase_'); do
+            echo "::group::$c"
+            docker logs --tail 300 "$c" 2>&1 || true
+            echo "::endgroup::"
+          done

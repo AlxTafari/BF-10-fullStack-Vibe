@@ -15,7 +15,7 @@ ADR-007 в [`../../architecture/decisions.md`](../../architecture/decisions.md))
 |---|---|---|
 | [01-ci-cd-basics.md](01-ci-cd-basics.md) | Зачем CI/CD, что он ловит у нас, «зелёный main» | S08, сессия 1 |
 | [02-github-actions-anatomy.md](02-github-actions-anatomy.md) | Разбор `guest-bot.yml` по блокам, где смотреть результат | S08, сессия 1 |
-| `03-database-in-ci.md` | Supabase в Docker внутри раннера, миграции с чистого листа | сессия 2 |
+| [03-database-in-ci.md](03-database-in-ci.md) | Supabase в Docker внутри раннера, миграции с чистого листа | S08, сессия 2 |
 | `04-secrets-and-environments.md` | Secrets, Variables, `.env`; что секрет, а что нет | сессия 3 |
 | `05-deploy-and-rollback.md` | Порядок выкладки, expand → contract, откат | сессия 3 |
 | `06-spa-hosting-and-csp.md` | Cloudflare Pages, `_headers`, CSP | сессия 3 |

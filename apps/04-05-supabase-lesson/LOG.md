@@ -38,3 +38,16 @@
 - Все шаги `checks` прогнаны локально теми же командами: зелёные (бот — 131 юнит-тест, lint 80 файлов чисто).
 - Первый прогон на GitHub (push `18edbb2`): `checks` зелёный за 42 с. Тестовый PR #1 (ошибка типа в `plural.ts`): событие `pull_request`, красный на `Admin: typecheck` (TS2322), lint/build пропущены, 32 с; старый `CI` на PR не запустился (`paths` работает). PR закрыт без merge, ветка удалена. На PR видны проверки Vercel — приложение конвертера валют, не наш workflow. Notice: `ubuntu-latest` переезжает на Ubuntu 26 — оставлен ярлык.
 **Осталось:** сессия 2 — job `integration` (`supabase start`, тесты бота и админки, `curl` к функции на проверку `import_map`).
+
+## 2026-11-08 — S08, сессия 2: job integration, Supabase в раннере
+**Цель:** job `integration` — `supabase start` в раннере, все тесты бота и админки на чистой БД, проверка `import_map` функций на edge runtime; заметка `ci-cd/03`.
+**Решения:**
+- CLI — `supabase/setup-cli@v3` с версией `2.117.0` (как в `pnpm-lock.yaml`), не `pnpm exec`: postinstall пакета `supabase` (скачивает бинарник) не выполняется, в `allowBuilds` только esbuild.
+- `supabase start -x studio,mailpit,storage-api,imgproxy,postgres-meta,logflare,vector,supavisor`: остаются Postgres, Auth, PostgREST, Realtime, Kong, Edge Runtime. Storage в проекте не используется.
+- `.env` — `supabase status -o env --override-name api.url=SUPABASE_URL …` (имена `api.url`, `auth.anon_key`, `auth.service_role_key` подтверждены прогоном); проверка наличия трёх переменных без печати файла. Тесты и конфиги не менялись.
+- `import_map` **подтверждён на локальном edge runtime**: POST без секрета → `telegram-webhook` и `notify-guest` отвечают `401 forbidden` (тело сверяется, чтобы не спутать с 401 от Kong). Окончательно — первый деплой в prod.
+- Первый прогон: все 4 интеграционных файла админки упали — `Email logins are disabled`. Причина подтверждена: `[auth.email] enable_signup = false` в `config.toml` CLI превращает в `GOTRUE_EXTERNAL_EMAIL_ENABLED=false` — выключает email-вход целиком. Исправлено на `true`; регистрацию закрывает `[auth] enable_signup = false`. Для prod (сессия 3, `prod-checklist`): в Dashboard выключить «Allow new users to sign up», провайдер Email оставить включённым.
+- Риски спеки не подтвердились: тесты не зависят от данных dev вне `seed.sql`; Realtime прошёл без прогрева; отсутствие `notify_guest_*` в Vault тесты статусов не ломает.
+- Отладка — в ветке `s08-integration` через `gh workflow run --ref`, в `main` попал уже зелёный вариант.
+- Второй прогон зелёный: `checks` 44 с, `integration` 2 мин 03 с (`supabase start` ~62 с, все 13 миграций с нуля + seed; бот 157/157 без пропусков, админка 311/311). В первом прогоне ECR ответил `Rate exceeded`, CLI повторил сам — возможный источник случайных падений, лечится перезапуском.
+**Осталось:** сессия 3 — job `deploy`, prod-окружение (Supabase, BotFather, Cloudflare Pages), `_headers` с CSP, заметки `04`, `05`, `06`, `prod-checklist`.
