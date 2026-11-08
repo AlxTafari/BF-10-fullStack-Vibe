@@ -90,7 +90,7 @@ async function buildContext(
  */
 async function passesRateLimit(deps: Deps, ctx: HandlerContext, counts: boolean): Promise<boolean> {
   if (!counts) return true;
-  const decision = await checkGuestRate(deps.client, ctx.conversation.external_user_id);
+  const decision = await checkGuestRate(deps.client, ctx.conversation.external_user_id, "text");
   if (decision === "drop") return false;
   if (decision === "warn") {
     // Предупреждение — служебное, в messages не пишем (не часть диалога по существу). Через окно лимита
@@ -140,14 +140,19 @@ async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void
 }
 
 async function handleCallbackQuery(deps: Deps, cq: TelegramCallbackQuery): Promise<void> {
-  // Подтверждаем нажатие сразу — иначе у кнопки в клиенте крутится «часики».
-  await deps.tg.answerCallbackQuery(cq.id);
+  // Широкий лимит нажатий (S07, своё окно bucket = 'button') — до ответа на нажатие: при превышении ответ сам несёт
+  // предупреждение всплывашкой, в чат ничего не пишется и удалять потом нечего. До buildContext и записи в messages:
+  // отброшенное нажатие в БД не попадает. Сбой счётчика пропускает нажатие (fail open, S06c).
+  const decision = await checkGuestRate(deps.client, cq.from.id, "button");
+  // Ответ на нажатие — всегда, иначе у кнопки в клиенте крутятся «часики» до таймаута Telegram.
+  await deps.tg.answerCallbackQuery(cq.id, decision === "warn" ? RATE_LIMIT_WARNING : undefined);
+  if (decision !== "allowed") return;
 
   const ctx = await buildContext(deps, cq.from, cq.message?.chat.id, cq.message?.chat.type, cq.message?.message_id ?? null);
   if (!ctx) return;
 
   const data = cq.data ?? "";
-  // Нажатия кнопок — навигация, в лимит частоты не идут (см. countsTowardRateLimit).
+  // Нажатия — навигация: в текстовый лимит не идут (см. countsTowardRateLimit), только в окно кнопок выше.
   await logIncoming(ctx, `[кнопка] ${data}`, "button");
 
   // Кнопки сценария: flow:<draftId>:<действие>. Чужой draftId = старая сводка в чате — ничего не меняем.

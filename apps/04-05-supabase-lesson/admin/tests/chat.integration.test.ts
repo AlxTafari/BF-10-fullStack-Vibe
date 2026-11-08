@@ -328,6 +328,21 @@ describe.skipIf(!enabled)("Чат: курсор, RLS, триггер, непро
       const mine = await listen(managerA, "a");
       const foreign = await listen(managerB, "b");
 
+      // Прогрев (S07). SUBSCRIBED приходит раньше, чем Realtime реально начинает отдавать postgres_changes: после
+      // простоя первое событие теряется или идёт десятки секунд (первый прогон за день падал по таймауту, следующие —
+      // зелёные). Шлём пробы, пока одна не дойдёт до своего менеджера, и только потом проверяем. Пробы датированы
+      // раньше проверочного сообщения: превью и первая строка страницы остаются за ним.
+      for (let probe = 0; probe < 12 && !mine.some((e) => e.table === "messages"); probe++) {
+        await addMessages(conv, [{ direction: "in", text: `warmup ${probe}`, created_at: `2026-01-01T00:00:${String(probe).padStart(2, "0")}+00:00` }]);
+        const waitUntil = Date.now() + 5_000;
+        while (!mine.some((e) => e.table === "messages") && Date.now() < waitUntil) await sleep(250);
+      }
+      if (!mine.some((e) => e.table === "messages")) throw new Error("Realtime не прогрелся за 60 с — dev-проект недоступен?");
+      // Хвосты событий прогрева (UPDATE диалога, запоздавшие пробы) не должны попасть в проверку.
+      await sleep(1_000);
+      mine.length = 0;
+      foreign.length = 0;
+
       // Дробь переменной длины: '.12' (хвостовые нули отбрасываются) — проверяем, что все источники согласны.
       const stamp = "2026-05-01T10:00:00.120000+00:00";
       await addMessages(conv, [{ direction: "in", text: "realtime", created_at: stamp }]);
@@ -353,6 +368,6 @@ describe.skipIf(!enabled)("Чат: курсор, RLS, триггер, непро
       // Чужой менеджер: ни сообщений, ни обновления этого диалога (DELETE других тестов нас не касаются — подписаны на INSERT/UPDATE).
       expect(foreign.filter((e) => e.table === "messages")).toEqual([]);
       expect(foreign.filter((e) => e.table === "conversations" && e.row.id === conv)).toEqual([]);
-    }, 90_000);
+    }, 150_000); // прогрев до 60 с + ожидание до 45 с
   });
 });

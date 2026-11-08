@@ -21,6 +21,14 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
     ],
     resolve: { alias: { "@": path.resolve(import.meta.dirname, "./src") } },
-    test: { environment: "node", include: ["src/**/*.test.ts", "tests/**/*.test.ts"], env: testEnv },
+    test: {
+      environment: "node",
+      include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
+      env: testEnv,
+      // Интеграционные файлы tests/ делят одну dev-БД (ресторан, менеджер, заявки) и при параллельном запуске
+      // мешали друг другу (S07). Файлы идут по очереди; юнит-тесты src/ быстрые, на общем времени это почти не видно.
+      // Отдельная БД на прогон — S08.
+      fileParallelism: false,
+    },
   };
 });

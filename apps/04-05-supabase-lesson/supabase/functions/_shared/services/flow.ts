@@ -102,7 +102,10 @@ export async function continueFlow(
   const result = state.flow === "booking"
     ? advanceBooking(state, input, env)
     : advanceGuestRequest(state, input, env);
-  await saveFlowState(client, conversationId, result.state);
+  // «Отправить» состояние не пишет: дальше submitFlow работает с ним в памяти. Иначе при двойном тапе отставший
+  // обработчик (прочитал диалог до чужой отправки) записал бы уже отправленный черновик обратно, снова «выиграл» его
+  // в clearStateIfDraft и ответил гостю второй раз (S07). При сбое вставки в БД остаётся сводка — повтор работает.
+  if (result.reply.screen.screen !== "submit") await saveFlowState(client, conversationId, result.state);
   return result;
 }
 

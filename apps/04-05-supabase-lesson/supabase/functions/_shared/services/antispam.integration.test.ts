@@ -1,6 +1,6 @@
-// Интеграционный тест антиспама (S06c) против dev-БД: RPC check_rate_limit.
+// Интеграционный тест антиспама (S06c, окна text/button — S07) против dev-БД: RPC check_rate_limit.
 // Запуск: deno test --allow-env --allow-net --allow-read --env-file=../../.env _shared/services/antispam.integration.test.ts
-// Без SUPABASE_URL тест пропускается. Нужна применённая миграция S06c. Создаёт строки с отрицательным
+// Без SUPABASE_URL тест пропускается. Нужны применённые миграции S06c и S07 (button_rate_limit). Создаёт строки с отрицательным
 // external_user_id (не пересекается с настоящими Telegram id) и удаляет их.
 import { assertEquals } from "jsr:@std/assert@1";
 import { checkRateLimit } from "../repositories/rateLimitsRepo.ts";
@@ -18,7 +18,7 @@ Deno.test({
     const externalUserId = randomUser();
     try {
       const got: unknown[] = [];
-      for (let i = 0; i < 6; i++) got.push(await checkRateLimit(client, { externalUserId, max: 3, windowSeconds: 30 }));
+      for (let i = 0; i < 6; i++) got.push(await checkRateLimit(client, { externalUserId, bucket: "text", max: 3, windowSeconds: 30 }));
       assertEquals(got, ["allowed", "allowed", "allowed", "warn", "drop", "drop"]);
     } finally {
       await client.from("rate_limits").delete().eq("external_user_id", externalUserId);
@@ -34,7 +34,7 @@ Deno.test({
     const externalUserId = randomUser();
     try {
       const got = await Promise.all(
-        Array.from({ length: 8 }, () => checkRateLimit(client, { externalUserId, max: 3, windowSeconds: 30 })),
+        Array.from({ length: 8 }, () => checkRateLimit(client, { externalUserId, bucket: "text", max: 3, windowSeconds: 30 })),
       );
       assertEquals(got.filter((d) => d === "allowed").length, 3);
       assertEquals(got.filter((d) => d === "warn").length, 1);
@@ -53,11 +53,28 @@ Deno.test({
     const externalUserId = randomUser();
     try {
       // Окно 1 секунда: превышаем, ждём, и гость снова проходит; после нового превышения — снова одно warn.
-      for (let i = 0; i < 4; i++) await checkRateLimit(client, { externalUserId, max: 3, windowSeconds: 1 });
+      for (let i = 0; i < 4; i++) await checkRateLimit(client, { externalUserId, bucket: "text", max: 3, windowSeconds: 1 });
       await new Promise((resolve) => setTimeout(resolve, 1300));
       const got: unknown[] = [];
-      for (let i = 0; i < 4; i++) got.push(await checkRateLimit(client, { externalUserId, max: 3, windowSeconds: 1 }));
+      for (let i = 0; i < 4; i++) got.push(await checkRateLimit(client, { externalUserId, bucket: "text", max: 3, windowSeconds: 1 }));
       assertEquals(got, ["allowed", "allowed", "allowed", "warn"]);
+    } finally {
+      await client.from("rate_limits").delete().eq("external_user_id", externalUserId);
+    }
+  },
+});
+
+Deno.test({
+  name: "check_rate_limit: окна text и button независимы (S07)",
+  ...opts,
+  async fn() {
+    const client = createServiceClient();
+    const externalUserId = randomUser();
+    try {
+      // Исчерпали текстовое окно — кнопки всё ещё проходят, и наоборот.
+      for (let i = 0; i < 4; i++) await checkRateLimit(client, { externalUserId, bucket: "text", max: 3, windowSeconds: 30 });
+      assertEquals(await checkRateLimit(client, { externalUserId, bucket: "button", max: 3, windowSeconds: 30 }), "allowed");
+      assertEquals(await checkRateLimit(client, { externalUserId, bucket: "text", max: 3, windowSeconds: 30 }), "drop");
     } finally {
       await client.from("rate_limits").delete().eq("external_user_id", externalUserId);
     }

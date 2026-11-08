@@ -209,7 +209,7 @@ export function renderFlowReply(draftId: string, reply: FlowReply): { text: stri
       ];
       break;
     case "too_many_guests":
-      text = `Для компаний больше ${GUESTS_MAX} человек свяжитесь с менеджером — он всё обсудит.`;
+      text = `Для компании больше ${GUESTS_MAX} человек бронь через бота не оформить — оставьте запрос менеджеру.`;
       keyboard = [[btn("💬 Связаться с менеджером", "to_manager")], cancel];
       break;
     case "ask_name":
@@ -268,8 +268,9 @@ export function retrySubmitKeyboard(draftId: string): InlineKeyboard {
 export const MY_REQUESTS_EMPTY = "У вас пока нет заявок.";
 export const MY_REQUESTS_TITLE = "📋 Ваши заявки";
 export const MY_BOOKING_NOT_FOUND = "Заявка не найдена.";
-export const CANCEL_CONFIRM_TEXT = "Отменить эту бронь? Менеджер получит уведомление.";
-export const CANCEL_DONE = "Бронь отменена. Менеджер уведомлён.";
+// Без «менеджер уведомлён»: уведомление может не дойти (manager_notified_at), а гостю важен сам факт отмены (S07).
+export const CANCEL_CONFIRM_TEXT = "Отменить эту бронь?";
+export const CANCEL_DONE = "Бронь отменена.";
 export const CANCEL_CHANGE_DONE = "Запрос на изменение отменён. Прежняя бронь остаётся в силе.";
 export const CANCEL_NOT_POSSIBLE = "Эту заявку уже нельзя отменить: она отменена, прошла или обработана.";
 export const CHANGE_NOT_POSSIBLE = "Эту бронь сейчас нельзя изменить: она не активна или изменение уже запрошено.";
