@@ -1,15 +1,14 @@
-import { X } from "lucide-react";
-import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { type AllergenMode, addTag, removeTag } from "@/domain/dishSchema";
+import { ALLERGEN_LABELS, type AllergenCode, EU_ALLERGEN_CODES, toggleAllergen } from "@/domain/allergens";
+import type { AllergenMode } from "@/domain/dishSchema";
 
 interface Props {
   mode: AllergenMode;
-  tags: string[];
+  tags: AllergenCode[];
   onModeChange: (mode: AllergenMode) => void;
-  onTagsChange: (tags: string[]) => void;
+  onTagsChange: (tags: AllergenCode[]) => void;
 }
 
 const MODE_LABELS: Record<AllergenMode, string> = {
@@ -22,15 +21,11 @@ const MODE_LABELS: Record<AllergenMode, string> = {
  * Три состояния, а не два: «не указано» (null) ≠ «аллергенов нет» ([]).
  * Бот на первое ответит «нет данных», на второе — «аллергены не указаны как присутствующие»;
  * для человека с аллергией это разные ответы.
+ *
+ * «Указать» — выбор из справочника ЕС, а не свободный ввод (S09): AI-фильтр по аллергенам работает
+ * с кодами, и «глютен» / «пшеница» больше не расходятся в два разных значения.
  */
 export function AllergenField({ mode, tags, onModeChange, onTagsChange }: Props) {
-  const [draft, setDraft] = useState("");
-
-  function commit() {
-    onTagsChange(addTag(tags, draft));
-    setDraft("");
-  }
-
   return (
     <div className="space-y-2">
       <Select value={mode} onValueChange={(v) => onModeChange(v as AllergenMode)}>
@@ -47,36 +42,24 @@ export function AllergenField({ mode, tags, onModeChange, onTagsChange }: Props)
       </Select>
 
       {mode === "list" && (
-        <>
-          <Input
-            value={draft}
-            placeholder="Аллерген и Enter"
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              // Enter внутри формы отправил бы её — здесь он добавляет тег.
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commit();
-              }
-            }}
-            // Недописанный тег не теряем при уходе из поля.
-            onBlur={() => draft.trim() !== "" && commit()}
-          />
-          <div className="flex flex-wrap gap-1">
-            {tags.map((tag) => (
-              <Badge key={tag} variant="secondary" className="gap-1">
-                {tag}
-                <button
-                  type="button"
-                  aria-label={`Убрать ${tag}`}
-                  onClick={() => onTagsChange(removeTag(tags, tag))}
-                >
-                  <X className="size-3" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        </>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {EU_ALLERGEN_CODES.map((code) => {
+            const id = `allergen-${code}`;
+            return (
+              <div key={code} className="flex items-start gap-2">
+                <Checkbox
+                  id={id}
+                  checked={tags.includes(code)}
+                  // checked у Radix — boolean | "indeterminate"; промежуточного состояния здесь нет.
+                  onCheckedChange={(checked) => onTagsChange(toggleAllergen(tags, code, checked === true))}
+                />
+                <Label htmlFor={id} className="text-sm leading-tight font-normal">
+                  {ALLERGEN_LABELS[code]}
+                </Label>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

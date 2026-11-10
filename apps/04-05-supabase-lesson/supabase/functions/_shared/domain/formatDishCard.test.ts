@@ -8,7 +8,7 @@ const dorada: DishCardData = {
   price: 24,
   currency: "EUR",
   ingredients: "дорада, лимон",
-  allergens: ["рыба"],
+  allergens: ["fish"],
   portion_grams: 450,
   kcal_per_portion: 420,
   protein_per_portion: 52,
@@ -47,7 +47,12 @@ Deno.test("состав и порция null → «нет данных»", () =>
 Deno.test("аллергены: null, пустой список и список различаются", () => {
   assertStringIncludes(formatDishCard({ ...dorada, allergens: null }), `Аллергены: ${NO_DATA}`);
   assertStringIncludes(formatDishCard({ ...dorada, allergens: [] }), "Аллергены: нет (по данным карточки)");
-  assertStringIncludes(formatDishCard({ ...dorada, allergens: ["молоко", "яйца"] }), "Аллергены: молоко, яйца");
+  assertStringIncludes(formatDishCard({ ...dorada, allergens: ["milk", "eggs"] }), "Аллергены: молоко, яйца");
+});
+
+Deno.test("аллергены: коды справочника показываются гостю подписями", () => {
+  assertStringIncludes(formatDishCard(dorada), "Аллергены: рыба");
+  assertStringIncludes(formatDishCard({ ...dorada, allergens: ["cereals_gluten"] }), "Аллергены: глютен (злаки)");
 });
 
 Deno.test("предупреждение про аллергию — на любой карточке", () => {

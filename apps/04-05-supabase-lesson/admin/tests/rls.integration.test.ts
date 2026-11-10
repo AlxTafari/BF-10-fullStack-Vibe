@@ -9,6 +9,9 @@
 // Боту это не мешает: он берёт самый ранний ресторан, а тестовые создаются позже.
 import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { EU_ALLERGEN_CODES } from "../src/domain/allergens";
+// Справочник бота — тот же список в другой сборке (Deno). Файл без зависимостей, Vite импортирует его как обычный TS.
+import { EU_ALLERGEN_CODES as BOT_ALLERGEN_CODES } from "../../supabase/functions/_shared/domain/allergens";
 
 const url = process.env.SUPABASE_URL;
 const anonKey = process.env.SUPABASE_ANON_KEY;
@@ -26,7 +29,16 @@ const CLOSED_TABLES = ["processed_updates"] as const;
 const CHAT_TABLES = ["conversations", "messages"] as const;
 /** Заявки: менеджер читает свои (S05), писать не может — статусы только через RPC. */
 const REQUEST_TABLES = ["booking_requests", "guest_requests"] as const;
-const ALL_TABLES = [...CATALOG_TABLES, "restaurant_managers", ...CLOSED_TABLES, ...CHAT_TABLES, ...REQUEST_TABLES];
+/** Настройки AI (S09): менеджер читает и правит свою строку, создаёт и удаляет её только БД. */
+const SETTINGS_TABLES = ["restaurant_ai_settings"] as const;
+const ALL_TABLES = [
+  ...CATALOG_TABLES,
+  "restaurant_managers",
+  ...CLOSED_TABLES,
+  ...CHAT_TABLES,
+  ...REQUEST_TABLES,
+  ...SETTINGS_TABLES,
+];
 
 const runId = Math.random().toString(36).slice(2, 8);
 const TEST_UPDATE_ID = -Math.floor(Math.random() * 1_000_000_000) - 1; // отрицательный: не пересекается с настоящими
@@ -352,6 +364,70 @@ describe.skipIf(!enabled)("RLS: справочники и закрытые та�
       await managerA.from("restaurant_managers").delete().eq("user_id", userId);
       const { data } = await service.from("restaurant_managers").select("restaurant_id").eq("user_id", userId).single();
       expect(data?.restaurant_id).toBe(A.restaurantId);
+    });
+
+    it("настройки AI: строка создана вместе с рестораном, значения по умолчанию, видна только своя", async () => {
+      const rows = must(await managerA.from("restaurant_ai_settings").select("*"), "select ai settings");
+      expect(rows).toEqual([{ restaurant_id: A.restaurantId, ai_enabled: true, history_window: 12, daily_turn_limit: 50 }]);
+    });
+
+    it("настройки AI: правит свои в пределах check, вне диапазона — отказ БД", async () => {
+      const updated = must(
+        await managerA
+          .from("restaurant_ai_settings")
+          .update({ ai_enabled: false, history_window: 20, daily_turn_limit: 100 })
+          .eq("restaurant_id", A.restaurantId)
+          .select()
+          .single(),
+        "update ai settings",
+      );
+      expect(updated).toMatchObject({ ai_enabled: false, history_window: 20, daily_turn_limit: 100 });
+
+      for (const patch of [{ history_window: 3 }, { history_window: 31 }, { daily_turn_limit: 4 }, { daily_turn_limit: 501 }]) {
+        const res = await managerA.from("restaurant_ai_settings").update(patch).eq("restaurant_id", A.restaurantId);
+        expect(res.error, JSON.stringify(patch)).not.toBeNull();
+      }
+    });
+
+    it("настройки AI: чужие не меняются, создать и удалить нельзя", async () => {
+      await managerA.from("restaurant_ai_settings").update({ ai_enabled: false }).eq("restaurant_id", B.restaurantId);
+      const foreign = must(
+        await service.from("restaurant_ai_settings").select("ai_enabled").eq("restaurant_id", B.restaurantId).single(),
+        "foreign ai settings",
+      );
+      expect(foreign.ai_enabled).toBe(true);
+
+      const moved = await managerA
+        .from("restaurant_ai_settings")
+        .update({ restaurant_id: B.restaurantId })
+        .eq("restaurant_id", A.restaurantId);
+      expect(moved.error).not.toBeNull(); // with check: перенос в чужой ресторан
+
+      // Политик на insert и delete нет: строку создаёт триггер, удаляет каскад вместе с рестораном.
+      const inserted = await managerA.from("restaurant_ai_settings").insert({ restaurant_id: A.restaurantId });
+      expect(inserted.error).not.toBeNull();
+      await managerA.from("restaurant_ai_settings").delete().eq("restaurant_id", A.restaurantId);
+      const own = await service.from("restaurant_ai_settings").select("restaurant_id").eq("restaurant_id", A.restaurantId);
+      expect(own.data).toHaveLength(1);
+    });
+
+    it("аллергены: только коды справочника ЕС, свободный текст отклоняет БД", async () => {
+      const bad = await managerA.from("menu_items").update({ allergens: ["орехи"] }).eq("id", A.itemId);
+      expect(bad.error).not.toBeNull();
+      const good = must(
+        await managerA.from("menu_items").update({ allergens: ["nuts", "milk"] }).eq("id", A.itemId).select("allergens").single(),
+        "allergens codes",
+      );
+      expect(good.allergens).toEqual(["nuts", "milk"]);
+      // null («не указано») и [] («нет») по-прежнему допустимы
+      expect((await managerA.from("menu_items").update({ allergens: null }).eq("id", A.itemId)).error).toBeNull();
+      expect((await managerA.from("menu_items").update({ allergens: [] }).eq("id", A.itemId)).error).toBeNull();
+    });
+
+    it("справочник аллергенов одинаков в БД, админке и боте", async () => {
+      const db = must(await managerA.rpc("eu_allergen_codes"), "eu_allergen_codes");
+      expect(db).toEqual([...EU_ALLERGEN_CODES]);
+      expect([...BOT_ALLERGEN_CODES]).toEqual([...EU_ALLERGEN_CODES]);
     });
   });
 });

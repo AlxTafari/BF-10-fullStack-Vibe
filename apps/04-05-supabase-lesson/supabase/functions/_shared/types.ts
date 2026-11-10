@@ -56,7 +56,7 @@ export interface MenuItemRow {
   description: string | null;
   price: number;
   ingredients: string | null;
-  // null = не указано, [] = указано «аллергенов нет».
+  // Коды справочника ЕС (domain/allergens.ts), гарантирует check в БД. null = не указано, [] = указано «аллергенов нет».
   allergens: string[] | null;
   portion_grams: number | null;
   kcal_per_portion: number | null;
