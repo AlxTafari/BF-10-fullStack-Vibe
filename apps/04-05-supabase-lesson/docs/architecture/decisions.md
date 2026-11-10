@@ -93,7 +93,7 @@
 
 ## ADR-007. CI/CD
 
-**Статус:** Принято (реализация — S08).
+**Статус:** Принято, реализовано S08: `.github/workflows/guest-bot.yml` — `checks` (слои, `deno check`/`lint`, typecheck/lint/build админки) и `integration` (`supabase start` в раннере, все тесты бота и админки на чистой БД) на PR и push в `main`; `deploy` (`db push`, `functions deploy --use-api`, smoke) и `deploy-admin` (GitHub Pages через OIDC) только из `main`. Уточнения: отдельного prod-проекта нет, деплой в `myrest-guest-bot-dev`; админка на GitHub Pages, а не Cloudflare (CSP тегом `<meta>`); в Secrets только токен и пароль Supabase, секреты функций и Vault заводятся руками; откат — `git revert` + push.
 
 **Решение.** GitHub Actions: на PR — typecheck, lint, build админки, тесты, `deno check`/тесты функций; на main — `supabase db push`, `supabase functions deploy`, деплой админки. Секреты — в GitHub Secrets.
 
