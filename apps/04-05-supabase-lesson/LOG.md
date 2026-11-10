@@ -51,3 +51,23 @@
 - Отладка — в ветке `s08-integration` через `gh workflow run --ref`, в `main` попал уже зелёный вариант.
 - Второй прогон зелёный: `checks` 44 с, `integration` 2 мин 03 с (`supabase start` ~62 с, все 13 миграций с нуля + seed; бот 157/157 без пропусков, админка 311/311). В первом прогоне ECR ответил `Rate exceeded`, CLI повторил сам — возможный источник случайных падений, лечится перезапуском.
 **Осталось:** сессия 3 — job `deploy`, prod-окружение (Supabase, BotFather, Cloudflare Pages), `_headers` с CSP, заметки `04`, `05`, `06`, `prod-checklist`.
+
+## 2026-11-08 — S08, сессия 3: prod-окружение и job deploy
+**Цель:** prod-проект Supabase, второй бот, хостинг админки по `prod-checklist.md` (вживую), Secrets/Variables, `_headers` с CSP, job `deploy` + smoke; заметки `04`, `05`, `06`, `prod-checklist`.
+**Решения:**
+- **Отдельного prod-проекта и второго бота нет** (отступление от спеки §1, §2.А). Проект учебный, ботом пользуется только разработчик. CI деплоит в существующий `myrest-guest-bot-dev` и бот `@myrest_guest_bot`. Секреты функций, Vault, seed, webhook и менеджер уже на месте, чек-лист сокращён до доступа CI, хостинга админки и Auth Site URL. Шаги для отдельного prod — приложением в `prod-checklist.md`. Цель деплоя задаёт только Variable `SUPABASE_PROJECT_REF`. Цена решения: миграции в этот проект теперь катит только CI (миграция с ноутбука мимо `main` ломает следующий `db push`), функции с ноутбука перезаписываются следующим push в `main`. История миграций проекта до подключения CI совпадает с локальной (13/13).
+- Ручной `db push` закрыт: скрипт `db:push` (и `db:push:rest` через него) печатает «миграции катит только CI» и выходит с ошибкой. Паролем БД закрыть нельзя: CLI с ноутбука ходит через личный токен и временную login-роль, без пароля (`migration list --linked` отработал без него). Голый `supabase db push` остаётся возможным, ограничение — по договорённости. Миграция проверяется в PR (`integration`) или локально (`supabase start`). `deploy:rest` оставлен: функции с ноутбука ничего не ломают, следующий push в `main` их перезапишет.
+- CSP и хостинг админки — см. запись 2026-11-10 (Cloudflare Pages заменён на GitHub Pages). `style-src 'unsafe-inline'` нужен из-за sonner: он вставляет `<style>` из JS (подтверждено в `node_modules/sonner`). Добавлен `object-src 'none'`.
+- `concurrency` workflow: `cancel-in-progress` только для PR. Раньше стоял `true` для всех, и второй push в `main` отменил бы весь прогон вместе с deploy посреди миграции.
+- Функции — `functions deploy --use-api` (сборка на стороне Supabase, без Docker-образа).
+**Осталось:** (заполняется по ходу)
+
+## 2026-11-10 — S08, сессия 3 (продолжение): только GitHub, без Cloudflare
+**Цель:** убрать второй внешний сервис из деплоя. В учебном проекте важнее понять механику CI/CD на одном инструменте, чем подключать ещё один аккаунт и токены.
+**Решения:**
+- Админка — на **GitHub Pages** вместо Cloudflare Pages (отступление от спеки §2.А, §3). Из чек-листа ушли аккаунт Cloudflare, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `wrangler pages project create`, Variables `CF_PAGES_PROJECT` и `ADMIN_URL`. Остались 2 секрета (Supabase) и 3 Variables. Публикация — `actions/upload-pages-artifact@v5` + `actions/deploy-pages@v5` через OIDC, без токенов.
+- Workflow: `deploy` (миграции, функции, smoke функций, окружение `production`) и отдельный `deploy-admin` после него (окружение `github-pages`, права `pages: write` + `id-token: write` только у него).
+- Ограничения Pages описываются в заметке 06, а не обходятся: нет своих заголовков ответа, поэтому CSP — тегом `<meta>` (плагин `cspMeta` в `vite.config.ts`), а `frame-ancestors` и `X-Frame-Options` так не задать, защиты от встраивания во фрейм нет. Нет SPA-fallback: `404.html` = копия `index.html`, глубокая ссылка открывается, но со статусом 404. Сайт в подпапке `/<репозиторий>/`: `base` из `ADMIN_BASE_PATH` и `basepath` роутера из `import.meta.env.BASE_URL`.
+- `LoginForm`: `router.history.push` → `router.navigate({ href })`. `history.push` не знает про `basepath` и после входа увёл бы на `/bookings/…` мимо подпапки.
+- Локально: сборка с `ADMIN_BASE_PATH=/BF-10-fullStack-Vibe/` даёт ассеты с префиксом и CSP первым тегом `<head>`, lint чистый. В браузере на Pages не проверено, проверит первый деплой и шаг Е чек-листа.
+**Осталось:** пройти `prod-checklist.md` (A, Б1 включить Pages, В, Г2 Site URL = `https://alxtafari.github.io/BF-10-fullStack-Vibe/`), первый деплой, заметки `04`, `05`, `06`.

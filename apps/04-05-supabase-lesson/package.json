@@ -8,7 +8,7 @@
     "stop": "supabase stop",
     "serve": "supabase functions serve --env-file .env",
     "functions:deploy": "supabase functions deploy",
-    "db:push": "supabase db push",
+    "db:push": "echo 'Миграции в удалённый проект катит только CI: ветка → PR (integration проверяет на чистой БД) → main (deploy). Локально: pnpm start && pnpm db:reset. docs/guides/ci-cd/05-deploy-and-rollback.md' >&2 && exit 1",
     "db:reset": "supabase db reset",
     "db:seed:remote": "supabase db query --linked -f supabase/seed.sql",
     "db:seed:chat-demo": "supabase db query --linked -f supabase/dev-chat-seed.sql",

@@ -7,7 +7,9 @@ import { store } from "./api/store";
 import { routeTree } from "./routeTree.gen";
 import "./styles/globals.css";
 
-const router = createRouter({ routeTree });
+// basepath — подпапка, из которой раздаётся админка (GitHub Pages: /<репозиторий>/), локально "/".
+// Значение — base из vite.config.ts, чтобы роутер и пути к ассетам не разъехались.
+const router = createRouter({ routeTree, basepath: import.meta.env.BASE_URL });
 
 startAuthListener();
 

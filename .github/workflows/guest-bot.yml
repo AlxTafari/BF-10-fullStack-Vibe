@@ -2,8 +2,14 @@
 # Спека — apps/04-05-supabase-lesson/docs/roadmap/sprints/S08-ci-cd.md, разбор файла построчно —
 # apps/04-05-supabase-lesson/docs/guides/ci-cd/02-github-actions-anatomy.md.
 #
-# Сейчас здесь быстрые проверки (checks) и интеграционные тесты на Supabase в раннере (integration).
-# Выкладка в prod (deploy) добавляется сессией 3 S08. Разбор integration — docs/guides/ci-cd/03-database-in-ci.md.
+# Четыре job'а: быстрые проверки (checks), интеграционные тесты на Supabase в раннере (integration),
+# выкладка миграций и функций в Supabase (deploy) и админки на GitHub Pages (deploy-admin). Выкладка — только
+# из main и только после двух зелёных. Из внешних сервисов — только Supabase; админку хостит сам GitHub.
+# Разбор integration — docs/guides/ci-cd/03, секреты — 04, порядок деплоя и откат — 05, хостинг админки и CSP — 06.
+#
+# «prod» здесь — окружение, куда выкатывает CI. В учебном проекте это единственный удалённый проект Supabase
+# (тот же, что для ручной работы) и бот @myrest_guest_bot; отдельного prod-проекта нет (S08, сессия 3).
+# Какой проект — решает только Variable SUPABASE_PROJECT_REF, YAML от этого не меняется.
 name: Guest bot
 
 on:
@@ -22,11 +28,12 @@ on:
   # Ручной запуск из вкладки Actions.
   workflow_dispatch:
 
-# Новый коммит в ту же ветку/PR отменяет устаревший прогон проверок: результат старого уже никому не нужен.
-# Деплой (позже) получит свою группу без отмены — миграцию на середине прерывать нельзя.
+# На PR новый коммит отменяет устаревший прогон: результат старого уже никому не нужен.
+# В main не отменяем никогда: отмена прогона целиком убила бы и deploy посреди миграции. Второй push в main
+# ждёт, пока первый прогон закончится (а третий заменяет ждущий второй — уедет самый свежий код).
 concurrency:
   group: guest-bot-checks-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Токен GitHub в job'ах — только на чтение кода. Права шире выдаются job'у явно, когда понадобятся.
 permissions:
@@ -186,3 +193,161 @@ jobs:
             docker logs --tail 300 "$c" 2>&1 || true
             echo "::endgroup::"
           done
+
+  deploy:
+    name: Deploy to prod (migrations, functions)
+    # Деплой только после двух зелёных job'ов. Красный (или отменённый) любой из них — deploy пропущен.
+    needs: [checks, integration]
+    # PR не деплоит никогда: код ещё не в main. push и workflow_dispatch — только с ветки main.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # История деплоев во вкладке Environments. Ручное подтверждение включается там же галочкой, без правки YAML.
+    environment: production
+    # Своя группа без отмены: два деплоя не идут параллельно, второй ждёт первого (в том числе ручной запуск).
+    concurrency:
+      group: guest-bot-prod
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: apps/04-05-supabase-lesson
+    # Не секретное значение prod — из GitHub Variables. Секреты подключаются только в тех шагах, где нужны.
+    env:
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Пустая переменная дала бы непонятную ошибку CLI — падаем сразу и с понятным текстом.
+      - name: Check prod variables
+        run: |
+          [ -n "$SUPABASE_PROJECT_REF" ] \
+            || { echo "::error::Variable SUPABASE_PROJECT_REF не задана (Settings → Secrets and variables → Actions)"; exit 1; }
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.117.0
+
+      # 1. Схема раньше кода: функция, которая ждёт новую колонку, не должна выйти раньше колонки.
+      # link запоминает проект в supabase/.temp (на виртуалке, в git не попадает). --yes: без вопроса
+      # «применить миграции?», иначе job висит до таймаута. seed.sql в prod CI не запускает (без --include-seed).
+      - name: "Prod: migrations"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          supabase db push --yes
+
+      # 2. Все функции из supabase/functions; verify_jwt и import_map — из config.toml.
+      # --use-api: сборка на стороне Supabase, без скачивания Docker-образа edge runtime на раннер.
+      - name: "Prod: functions"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF" --use-api
+
+      # 3. Smoke: «деплой зелёный, а бот отвечает 500» узнаём здесь, а не от гостя.
+      # Функции без секрета отвечают 401 с телом forbidden — значит загрузились и нашли импорты.
+      - name: Smoke test functions
+        run: |
+          for fn in telegram-webhook notify-guest; do
+            body=$(mktemp)
+            code=$(curl -sS --max-time 60 -o "$body" -w '%{http_code}' -X POST \
+              -H 'content-type: application/json' -d '{}' "https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/$fn")
+            echo "$fn: HTTP $code, body: $(head -c 200 "$body")"
+            [ "$code" = 401 ] && [ "$(cat "$body")" = forbidden ] || { echo "::error::$fn в prod не отвечает 401 forbidden"; exit 1; }
+          done
+
+  # Админка — отдельный job: GitHub Pages требует своё окружение (github-pages) и права, которых нет у остальных.
+  # После deploy, а не параллельно: новая админка может ждать новую колонку, схема должна выйти первой.
+  deploy-admin:
+    name: Deploy admin to GitHub Pages
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Окружение github-pages GitHub создаёт сам при включении Pages; адрес сайта попадает в историю деплоев.
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    # Никаких сторонних токенов: deploy-pages доказывает GitHub'у, что он — этот workflow, через OIDC (id-token),
+    # и публикует сайт правом pages: write. Права выдаются только этому job'у.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: guest-bot-pages
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: apps/04-05-supabase-lesson
+    env:
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      # VITE_* уходят в бандл браузера — это публичные значения, поэтому они в Variables, а не в Secrets.
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+      # Сайт проекта на Pages живёт в подпапке /<репозиторий>/ — Vite и роутер берут путь отсюда.
+      ADMIN_BASE_PATH: /${{ github.event.repository.name }}/
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Админка и миграции должны смотреть в один проект: ref из URL совпадает с SUPABASE_PROJECT_REF.
+      - name: Check admin variables
+        run: |
+          for key in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY; do
+            [ -n "${!key}" ] || { echo "::error::Variable ${key} не задана (Settings → Secrets and variables → Actions)"; exit 1; }
+          done
+          [ "$VITE_SUPABASE_URL" = "https://${SUPABASE_PROJECT_REF}.supabase.co" ] \
+            || { echo "::error::VITE_SUPABASE_URL не указывает на проект ${SUPABASE_PROJECT_REF}"; exit 1; }
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.17.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Плагин cspMeta в vite.config.ts вписывает CSP под этот проект тегом <meta> в index.html.
+      # 404.html — копия index.html: Pages не знает про маршруты SPA и на /bookings/<id> отдаёт 404.html.
+      # Страница откроется (роутер прочитает путь из адреса), но статус ответа останется 404 — ограничение Pages.
+      - name: "Admin: build for prod"
+        run: |
+          pnpm --filter 04-05-admin build
+          grep -q "connect-src &#39;self&#39; https://${SUPABASE_PROJECT_REF}.supabase.co" admin/dist/index.html \
+            || { echo "::error::admin/dist/index.html без CSP под prod-проект"; exit 1; }
+          cp admin/dist/index.html admin/dist/404.html
+
+      # Упаковывает dist в артефакт github-pages — его и публикует следующий шаг.
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: apps/04-05-supabase-lesson/admin/dist
+
+      - name: "Admin: deploy to GitHub Pages"
+        id: pages
+        uses: actions/deploy-pages@v5
+
+      # Smoke: главная — 200 и CSP в разметке; глубокая ссылка — 404.html с той же разметкой (статус 404 ожидаем).
+      # Pages раздаёт новый деплой не мгновенно — несколько попыток.
+      - name: Smoke test admin
+        env:
+          ADMIN_URL: ${{ steps.pages.outputs.page_url }}
+        run: |
+          check() {  # $1 — путь, $2 — ожидаемый HTTP-статус
+            for attempt in 1 2 3 4 5 6; do
+              body=$(mktemp)
+              code=$(curl -sS --max-time 20 -o "$body" -w '%{http_code}' "${ADMIN_URL%/}$1" || true)
+              if [ "$code" = "$2" ] && grep -q 'Content-Security-Policy' "$body" && grep -q 'id="root"' "$body"; then
+                echo "${ADMIN_URL%/}$1: HTTP $code + CSP"; return 0
+              fi
+              sleep 10
+            done
+            echo "::error::${ADMIN_URL%/}$1: ждали HTTP $2 с CSP и #root, получили $code"; return 1
+          }
+          check / 200
+          check /bookings/smoke 404

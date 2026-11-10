@@ -20,7 +20,9 @@ export function LoginForm({ redirectTo }: { redirectTo: string | undefined }) {
     const result = await signIn(values);
     if (result.error) return;
     // redirect приходит из URL — валидируем ещё раз перед переходом.
-    router.history.push(safeRedirect(redirectTo));
+    // navigate, а не history.push: путь внутренний (без подпапки GitHub Pages), и только роутер
+    // добавляет к нему basepath. history.push увёл бы на /<путь> мимо подпапки.
+    await router.navigate({ href: safeRedirect(redirectTo) });
   }
 
   return (
