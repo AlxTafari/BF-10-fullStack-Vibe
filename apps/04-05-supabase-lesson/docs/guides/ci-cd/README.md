@@ -16,9 +16,9 @@ ADR-007 в [`../../architecture/decisions.md`](../../architecture/decisions.md))
 | [01-ci-cd-basics.md](01-ci-cd-basics.md) | Зачем CI/CD, что он ловит у нас, «зелёный main» | S08, сессия 1 |
 | [02-github-actions-anatomy.md](02-github-actions-anatomy.md) | Разбор `guest-bot.yml` по блокам, где смотреть результат | S08, сессия 1 |
 | [03-database-in-ci.md](03-database-in-ci.md) | Supabase в Docker внутри раннера, миграции с чистого листа | S08, сессия 2 |
-| `04-secrets-and-environments.md` | Secrets, Variables, `.env`; что секрет, а что нет | сессия 3 |
-| `05-deploy-and-rollback.md` | Порядок выкладки, expand → contract, откат | сессия 3 |
-| `06-spa-hosting-and-csp.md` | GitHub Pages: подпапка, 404.html вместо SPA-fallback, CSP тегом `<meta>` и чего он не умеет | сессия 3 |
+| [04-secrets-and-environments.md](04-secrets-and-environments.md) | Где что лежит: `.env`, Secrets, Variables, секреты функций, Vault; что секрет, а что нет; ограниченный токен Supabase и IPv6/пулер; OIDC и environments | S08, сессия 3 |
+| [05-deploy-and-rollback.md](05-deploy-and-rollback.md) | Порядок «схема → функции → админка», expand → contract, почему миграции катит только CI, `concurrency`, smoke, откат | S08, сессия 3 |
+| [06-spa-hosting-and-csp.md](06-spa-hosting-and-csp.md) | GitHub Pages: подпапка, 404.html вместо SPA-fallback, CSP тегом `<meta>` и чего он не умеет, чтение нарушений | S08, сессия 3 |
 | `prod-checklist.md` | Первичная настройка prod-проекта по шагам (только локально, в `.gitignore`) | сессия 3 |
 
 ## Словарь

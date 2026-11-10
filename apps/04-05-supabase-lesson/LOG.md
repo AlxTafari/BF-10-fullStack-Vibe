@@ -77,4 +77,9 @@
 **Решения:**
 - Прогон 42787232886: `checks`, `integration` зелёные, `deploy` упал на `db push` с `IPv6 is not supported on your current network`, `deploy-admin` пропущен, prod не тронут. Причина подтверждена: у раннеров GitHub нет IPv6, прямой адрес БД только IPv6, а адрес пулера (IPv4) `link` не сохранил: ограниченному токену не хватало `database_pooling_config_read` (Connection Pooling: Read). Запрос пулера в `link` best-effort (исходники CLI, `link-services-core.ts`), ошибка проглатывается. Проверено `curl` к Management API: 403 с `missing_permissions`.
 - Токен пересоздаётся с этим правом. В шаг `Prod: migrations` добавлена проверка `supabase/.temp/pooler-url` после `link`: падение с понятным текстом вместо ошибки про IPv6.
-**Осталось:** новый токен в `SUPABASE_ACCESS_TOKEN`, push, зелёный `deploy` и `deploy-admin`, Д2, шаг Е.
+- Второй прогон (`bffe0da`) зелёный целиком: `Remote database is up to date`, обе функции выложены, smoke 401 `forbidden`, админка на Pages отвечает 200.
+- Д2: `migration list --linked` — 13/13, Local и Remote совпадают.
+- Локальный CLI отвечал `Invalid access token`: в `.env` лежал `SUPABASE_ACCESS_TOKEN` удалённого токена, CLI берёт его раньше `supabase login`, и повторный `login`, судя по всему, сохранил в связку ключей его же. Строка из `.env` удалена, после повторного `login` CLI работает. Локально токен в `.env` не нужен.
+- Шаг Е: вход менеджером на Pages работает (пароль менеджера задан заново через SQL Editor: «Send password recovery» отвечал `requested path is invalid`, а экрана сброса пароля в админке всё равно нет). Во время брони — BUG-003 (`unavailable` на шаге гостей, гипотеза: повторное нажатие кнопки часа).
+- Заметки `04` (секреты, окружения, токен и пулер, OIDC), `05` (порядок деплоя, expand → contract, откат), `06` (GitHub Pages, CSP в `<meta>`). В `05` записано: откат через `workflow_dispatch` со старого коммита, как планировала спека, с условием `github.ref == 'refs/heads/main'` не работает; откат — `git revert` + push.
+**Осталось:** досмотреть Е2–Е4 (F5 на заявке, CSP в Console, Realtime, уведомления), приёмка S08, хвосты: экрана сброса пароля в админке нет.
