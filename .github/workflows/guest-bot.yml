@@ -235,8 +235,16 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        # У раннеров GitHub нет IPv6, а прямой адрес БД (db.<ref>.supabase.co) на бесплатном плане — только IPv6.
+        # db push тогда идёт через пулер (IPv4), адрес которого link кладёт в supabase/.temp/pooler-url.
+        # link запрашивает его «best-effort»: без права Connection Pooling: Read у токена молча пропускает
+        # и пишет Finished, а db push падает с невнятным «IPv6 is not supported». Проверяем сами.
         run: |
           supabase link --project-ref "$SUPABASE_PROJECT_REF"
+          [ -s supabase/.temp/pooler-url ] || {
+            echo "::error::link не сохранил адрес пулера: токену SUPABASE_ACCESS_TOKEN нужно право Connection Pooling: Read"
+            exit 1
+          }
           supabase db push --yes
 
       # 2. Все функции из supabase/functions; verify_jwt и import_map — из config.toml.

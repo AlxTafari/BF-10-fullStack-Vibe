@@ -71,3 +71,10 @@
 - `LoginForm`: `router.history.push` → `router.navigate({ href })`. `history.push` не знает про `basepath` и после входа увёл бы на `/bookings/…` мимо подпапки.
 - Локально: сборка с `ADMIN_BASE_PATH=/BF-10-fullStack-Vibe/` даёт ассеты с префиксом и CSP первым тегом `<head>`, lint чистый. В браузере на Pages не проверено, проверит первый деплой и шаг Е чек-листа.
 **Осталось:** пройти `prod-checklist.md` (A, Б1 включить Pages, В, Г2 Site URL = `https://alxtafari.github.io/BF-10-fullStack-Vibe/`), первый деплой, заметки `04`, `05`, `06`.
+
+## 2026-11-10 — S08, первый деплой: db push не достучался до БД
+**Цель:** первый прогон `deploy` (шаг Д чек-листа).
+**Решения:**
+- Прогон 42787232886: `checks`, `integration` зелёные, `deploy` упал на `db push` с `IPv6 is not supported on your current network`, `deploy-admin` пропущен, prod не тронут. Причина подтверждена: у раннеров GitHub нет IPv6, прямой адрес БД только IPv6, а адрес пулера (IPv4) `link` не сохранил: ограниченному токену не хватало `database_pooling_config_read` (Connection Pooling: Read). Запрос пулера в `link` best-effort (исходники CLI, `link-services-core.ts`), ошибка проглатывается. Проверено `curl` к Management API: 403 с `missing_permissions`.
+- Токен пересоздаётся с этим правом. В шаг `Prod: migrations` добавлена проверка `supabase/.temp/pooler-url` после `link`: падение с понятным текстом вместо ошибки про IPv6.
+**Осталось:** новый токен в `SUPABASE_ACCESS_TOKEN`, push, зелёный `deploy` и `deploy-admin`, Д2, шаг Е.
