@@ -262,7 +262,10 @@ export function advanceBooking(state: BookingState, input: FlowInput, env: FlowE
         if (/[?¿？]/.test(input.text)) return stay("comment_unlikely");
         const added = input.text.trim();
         if (!added) return stay("text_empty");
-        const v = validateComment(state.data.comment ? `${state.data.comment}; ${added}` : added);
+        // Склеиваем через запятую, как гость сказал бы сам: «у окна, детский стул». Хвостовую пунктуацию
+        // прежнего пожелания убираем, чтобы не вышло «у окна., детский стул».
+        const prev = state.data.comment?.replace(/[\s,;.]+$/, "");
+        const v = validateComment(prev ? `${prev}, ${added}` : added);
         return v.ok ? next("confirm", { comment: v.value }) : stay(v.error);
       }
       if (input.action !== "send") return stay("unavailable");

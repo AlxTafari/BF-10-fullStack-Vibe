@@ -233,12 +233,12 @@ Deno.test("сводка «Что-нибудь ещё?»: текст дописы
   let r = advanceBooking(atConfirm.state as BookingState, text("у окна"), env());
   assertEquals(r.state.step, "confirm");
   r = advanceBooking(r.state as BookingState, text("детский стул"), env());
-  assertEquals((r.state as BookingState).data.comment, "у окна; детский стул");
-  assert(r.reply.screen.screen === "confirm" && r.reply.screen.summary.includes("у окна; детский стул"));
+  assertEquals((r.state as BookingState).data.comment, "у окна, детский стул");
+  assert(r.reply.screen.screen === "confirm" && r.reply.screen.summary.includes("у окна, детский стул"));
 
   const question = advanceBooking(r.state as BookingState, text("а парковка есть?"), env());
   assertEquals(question.reply.error, "comment_unlikely");
-  assertEquals((question.state as BookingState).data.comment, "у окна; детский стул");
+  assertEquals((question.state as BookingState).data.comment, "у окна, детский стул");
 });
 
 Deno.test("шаг имени: имя с телефоном одним сообщением, кнопка Telegram, только телефон", () => {
