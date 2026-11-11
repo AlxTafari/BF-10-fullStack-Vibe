@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { listTimeLabel } from "@/domain/chatTime";
 import type { ConversationRow } from "@/domain/conversations";
+import { isHandoffActive } from "@/domain/handoff";
 import { LoadError } from "@/features/common/LoadError";
 import { useNow } from "@/features/common/useNow";
 import { cn } from "@/lib/utils";
@@ -99,6 +100,10 @@ export function ConversationList({ activeId, timeZone }: { activeId: string | un
                       <Badge variant="destructive" className="shrink-0" title={c.flag_reason ?? undefined}>
                         угроза
                       </Badge>
+                    )}
+                    {/* Ручной режим (S06b): менеджер в диалоге, бот на паузе. */}
+                    {isHandoffActive(c.handoff_until, now.getTime()) && (
+                      <Badge className="shrink-0 bg-emerald-600 text-white">менеджер</Badge>
                     )}
                   </span>
                   <span className="shrink-0 text-xs text-muted-foreground">{listTimeLabel(c.last_message_at, now, timeZone)}</span>

@@ -16,6 +16,8 @@ export interface ConversationRow {
   /** Пометка угрозы (S09, ставит агент tool'ом flagThreat): когда и почему. Оба null — не помечен. */
   flagged_at: string | null;
   flag_reason: string | null;
+  /** Ручной режим (S06b): менеджер в диалоге, пока метка в будущем (domain/handoff.isHandoffActive). null — режима нет. */
+  handoff_until: string | null;
 }
 
 /** Что из строки conversations нужно списку (в событии Realtime приходит ещё state, chat_id — их здесь нет). */
@@ -37,6 +39,7 @@ export function toEventRow(row: ConversationRow): ConversationEventRow {
     manager_last_read_at: row.manager_last_read_at,
     flagged_at: row.flagged_at,
     flag_reason: row.flag_reason,
+    handoff_until: row.handoff_until,
   };
 }
 
@@ -66,9 +69,10 @@ export interface ConversationChange {
  * Влить событие `conversations` (INSERT / UPDATE) в кэш списка.
  *  - диалог без сообщений (last_message_at = null) в список не попадает; когда бот запишет первое сообщение,
  *    триггер пришлёт UPDATE, и диалог войдёт как новый;
- *  - UPDATE, в котором не изменилось ни последнее сообщение, ни превью, ни отметка прочтения, ни пометка угрозы
- *    (это setConversationState бота на каждом шаге сценария), игнорируется — список не перерисовывается и не дёргается;
- *  - пометка угрозы берётся из события как есть: её ставит бот и снимает менеджер, событие несёт текущее значение;
+ *  - UPDATE, в котором не изменилось ни последнее сообщение, ни превью, ни отметка прочтения, ни пометка угрозы,
+ *    ни ручной режим (это setConversationState бота на каждом шаге сценария), игнорируется — список не
+ *    перерисовывается и не дёргается;
+ *  - пометка угрозы и ручной режим берутся из события как есть: событие несёт текущее значение;
  *  - запоздавшее событие (last_message_at старее кэша) последнее сообщение не откатывает; отметка прочтения только растёт;
  *  - отметка ≥ last_message_at (прочитали в другой вкладке) → unread_count = 0;
  *  - порядок и размер списка — как у запроса; события за пределами загруженной части списка не вставляются
@@ -100,7 +104,8 @@ export function applyConversationEvent(list: Page<ConversationRow>, event: Conve
     || event.last_message_direction !== existing.last_message_direction));
   const readChanged = !sameStamp(read, existing.manager_last_read_at);
   const flagChanged = !sameStamp(event.flagged_at, existing.flagged_at) || event.flag_reason !== existing.flag_reason;
-  if (!lastChanged && !readChanged && !flagChanged) return unchanged;
+  const handoffChanged = !sameStamp(event.handoff_until, existing.handoff_until);
+  if (!lastChanged && !readChanged && !flagChanged && !handoffChanged) return unchanged;
 
   const next: ConversationRow = {
     ...existing,
@@ -110,6 +115,7 @@ export function applyConversationEvent(list: Page<ConversationRow>, event: Conve
     manager_last_read_at: read,
     flagged_at: event.flagged_at,
     flag_reason: event.flag_reason,
+    handoff_until: event.handoff_until,
   };
 
   let needsRefresh = false;

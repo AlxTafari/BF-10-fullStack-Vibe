@@ -29,10 +29,13 @@ export interface AiTurnUsage {
  * - aiFallback — агент не ответил (ошибка, таймаут, лимит), гость получил запасной ответ с кнопками.
  *   Ходом агента не считается: в лимит не идёт. Расход есть, если модель успела ответить хоть раз
  *   (например, таймаут на третьем раунде) — эти токены тоже оплачены.
+ * - manager — реплику написал менеджер из админки (S06b); managerId — auth.users.id без внешнего ключа:
+ *   журнал не должен ломаться при удалении пользователя.
  */
 export type MessageMeta =
   | ({ ai: true; model: string; tools: string[] } & AiTurnUsage)
-  | ({ aiFallback: "error" | "timeout" | "quota" | "limit"; model?: string } & Partial<AiTurnUsage>);
+  | ({ aiFallback: "error" | "timeout" | "quota" | "limit"; model?: string } & Partial<AiTurnUsage>)
+  | { manager: true; managerId: string };
 
 export interface RestaurantRow {
   id: string;
@@ -62,6 +65,9 @@ export interface ConversationRow {
   last_message_at: string | null;
   // Последнее навигационное сообщение бота (S06d): { screen, message_id, at, faq_answer_id? }. Разбирается через parseLastNav.
   last_nav: unknown | null;
+  // Ручной режим (S06b): пока метка в будущем, менеджер в диалоге и бот не отвечает на свободный текст.
+  // Пишут только RPC менеджера; проверка — domain/managerChat.ts (isHandoffActive).
+  handoff_until: string | null;
 }
 
 export interface FaqRow {

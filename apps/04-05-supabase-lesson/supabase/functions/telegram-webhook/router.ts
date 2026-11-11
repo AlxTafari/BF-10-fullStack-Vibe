@@ -7,11 +7,13 @@ import {
   MENU_MANAGER,
   MENU_MENU,
   MENU_MY,
+  MANAGER_TEXT_ONLY,
   RATE_LIMIT_WARNING,
   TEXT_TOO_LONG,
 } from "../_shared/content.ts";
 import { isFlowCallback, parseBookingCallback, parseCallback, parseFlowCallback } from "../_shared/domain/callbackData.ts";
 import { countsTowardRateLimit, isTooLong, RATE_LIMIT_WINDOW_SECONDS } from "../_shared/domain/antispam.ts";
+import { isHandoffActive } from "../_shared/domain/managerChat.ts";
 import type { LlmClient } from "../_shared/services/ai/agent.ts";
 import { getAiSettings } from "../_shared/services/aiSettings.ts";
 import { checkGuestRate } from "../_shared/services/antispam.ts";
@@ -114,7 +116,8 @@ async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void
 
   const text = message.text?.trim() ?? "";
   // Живой сценарий забирает текст себе (имя, число гостей…); не подошёл шагу — агенту с контекстом шага (S09, решает
-  // handlers/flow.ts). Иначе свободный текст — агенту (S09) или поиск блюда (S02).
+  // handlers/flow.ts). Менеджер в диалоге (S06b) — текст только ему, бот молчит. Иначе свободный текст — агенту (S09)
+  // или поиск блюда (S02).
   const flowState = getFlowState(ctx.conversation);
 
   // В лимит идёт только свободный текст вне сценария (агент, поиск): команды и шаги брони — легитимный быстрый ввод.
@@ -123,6 +126,20 @@ async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void
   if (isTooLong(text)) {
     // Текст не пишем в БД и не обрабатываем; в ответе его не цитируем.
     await deps.tg.sendMessage(ctx.chatId, TEXT_TOO_LONG);
+    return;
+  }
+
+  // Ручной режим (S06b) — только для свободного текста: команды работают как обычно, а сценарий, который гость сам
+  // начал кнопкой во время режима, ведёт бот (при подключении менеджера прежний сценарий сбрасывается в RPC).
+  const toManager = !isCommand && !flowState && isHandoffActive(ctx.conversation.handoff_until, new Date());
+  if (toManager) {
+    // Стикер или фото менеджер в админке не увидит (журнал хранит только текст) — говорим об этом гостю.
+    if (!text) {
+      await deps.tg.sendMessage(ctx.chatId, MANAGER_TEXT_ONLY);
+      return;
+    }
+    // 'text', а не 'search': это разговор по существу — превью, непрочитанные и окно агента после возврата.
+    await logIncoming(ctx, text, "text");
     return;
   }
 
