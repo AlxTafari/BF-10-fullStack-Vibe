@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AuthedAiStatsRouteImport } from './routes/_authed/ai-stats'
 import { Route as AuthedBookingsRouteImport } from './routes/_authed/bookings'
 import { Route as AuthedChatsRouteImport } from './routes/_authed/chats'
 import { Route as AuthedFaqRouteImport } from './routes/_authed/faq'
@@ -36,6 +37,11 @@ const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthedAiStatsRoute = AuthedAiStatsRouteImport.update({
+  id: '/ai-stats',
+  path: '/ai-stats',
+  getParentRoute: () => AuthedRoute,
 } as any)
 const AuthedBookingsRoute = AuthedBookingsRouteImport.update({
   id: '/bookings',
@@ -92,6 +98,7 @@ const AuthedRequestsRequestIdRoute = AuthedRequestsRequestIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/ai-stats': typeof AuthedAiStatsRoute
   '/bookings': typeof AuthedBookingsRouteWithChildren
   '/chats': typeof AuthedChatsRouteWithChildren
   '/faq': typeof AuthedFaqRoute
@@ -106,6 +113,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/ai-stats': typeof AuthedAiStatsRoute
   '/bookings': typeof AuthedBookingsRouteWithChildren
   '/chats': typeof AuthedChatsRouteWithChildren
   '/faq': typeof AuthedFaqRoute
@@ -122,6 +130,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
+  '/_authed/ai-stats': typeof AuthedAiStatsRoute
   '/_authed/bookings': typeof AuthedBookingsRouteWithChildren
   '/_authed/chats': typeof AuthedChatsRouteWithChildren
   '/_authed/faq': typeof AuthedFaqRoute
@@ -138,6 +147,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/ai-stats'
     | '/bookings'
     | '/chats'
     | '/faq'
@@ -152,6 +162,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/ai-stats'
     | '/bookings'
     | '/chats'
     | '/faq'
@@ -167,6 +178,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authed'
     | '/login'
+    | '/_authed/ai-stats'
     | '/_authed/bookings'
     | '/_authed/chats'
     | '/_authed/faq'
@@ -207,6 +219,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authed/ai-stats': {
+      id: '/_authed/ai-stats'
+      path: '/ai-stats'
+      fullPath: '/ai-stats'
+      preLoaderRoute: typeof AuthedAiStatsRouteImport
+      parentRoute: typeof AuthedRoute
     }
     '/_authed/bookings': {
       id: '/_authed/bookings'
@@ -330,6 +349,7 @@ const AuthedRequestsRouteWithChildren = AuthedRequestsRoute._addFileChildren(
 )
 
 interface AuthedRouteChildren {
+  AuthedAiStatsRoute: typeof AuthedAiStatsRoute
   AuthedBookingsRoute: typeof AuthedBookingsRouteWithChildren
   AuthedChatsRoute: typeof AuthedChatsRouteWithChildren
   AuthedFaqRoute: typeof AuthedFaqRoute
@@ -339,6 +359,7 @@ interface AuthedRouteChildren {
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
+  AuthedAiStatsRoute: AuthedAiStatsRoute,
   AuthedBookingsRoute: AuthedBookingsRouteWithChildren,
   AuthedChatsRoute: AuthedChatsRouteWithChildren,
   AuthedFaqRoute: AuthedFaqRoute,

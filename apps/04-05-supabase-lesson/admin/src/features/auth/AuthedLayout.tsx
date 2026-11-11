@@ -99,6 +99,7 @@ function Shell({
     { to: "/menu", label: "Меню", badge: 0 },
     { to: "/faq", label: "FAQ", badge: 0 },
     { to: "/restaurant", label: "Ресторан", badge: 0 },
+    { to: "/ai-stats", label: "Статистика AI", badge: 0 },
   ] as const;
   const state = CONNECTION_LABEL[connection];
 
