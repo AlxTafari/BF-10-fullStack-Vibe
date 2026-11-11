@@ -55,10 +55,20 @@ export interface LlmRequest {
   timeoutMs: number;
 }
 
+/**
+ * Расход токенов одного вызова — из ответа провайдера. По нему считается стоимость (S09: статистика в админке).
+ * thoughts — «размышления» модели: оплачиваются как выход, но провайдер считает их отдельно.
+ */
+export interface LlmUsage {
+  input: number;
+  output: number;
+  thoughts: number;
+}
+
 /** Ответ модели: либо финальный текст, либо просьба вызвать tools (текст рядом возможен, но не обязателен). */
 export type LlmResponse =
-  | { kind: "text"; text: string }
-  | { kind: "tool_calls"; calls: LlmToolCall[]; text?: string; providerState?: unknown };
+  | { kind: "text"; text: string; usage?: LlmUsage }
+  | { kind: "tool_calls"; calls: LlmToolCall[]; text?: string; providerState?: unknown; usage?: LlmUsage };
 
 /**
  * Почему вызов не удался — агенту важен только класс, не текст ошибки:
@@ -68,6 +78,7 @@ export type LlmResponse =
 export type LlmErrorKind = "quota" | "timeout" | "unavailable" | "bad_response";
 
 export class LlmError extends Error {
+  /** message — без данных гостя: только класс сбоя и, для quota, имя исчерпанного лимита провайдера. */
   constructor(readonly kind: LlmErrorKind, message: string) {
     super(message);
     this.name = "LlmError";

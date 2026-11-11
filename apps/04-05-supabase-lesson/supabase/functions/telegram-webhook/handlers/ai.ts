@@ -25,11 +25,12 @@ export async function handleAiText(ctx: HandlerContext, settings: AiSettings): P
       ai: true,
       model: turn.model,
       tools: turn.tools,
+      ...turn.usage,
     });
     return;
   }
-  // Агент не ответил — кнопки работают всегда: главное меню. Причина — только в meta (видно в журнале), не гостю.
-  await reply(ctx, AI_FALLBACK, MAIN_MENU_KEYBOARD, "text", { aiFallback: turn.reason });
+  // Агент не ответил — кнопки работают всегда: главное меню. Причина и расход — только в meta (журнал), не гостю.
+  await reply(ctx, AI_FALLBACK, MAIN_MENU_KEYBOARD, "text", { aiFallback: turn.reason, model: turn.model, ...turn.usage });
 }
 
 /**

@@ -14,6 +14,9 @@ import { MAX_TOOL_ROUNDS, runAgentTurn } from "./agent.ts";
 
 const enabled = !!Deno.env.get("SUPABASE_URL") && !!Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
+/** Пометка прошлого ответа агента для истории лимита: расход не важен, важно ai = true. */
+const PAST_AI_REPLY = { ai: true, model: "m", tools: [], calls: 1, inputTokens: 0, outputTokens: 0, thoughtTokens: 0, ms: 0 } as const;
+
 // Блюда seed.sql: «Креветки саганаки» в стоп-листе, «Рыба дня» не опубликована.
 const STOP_LIST_DISH = "Креветки саганаки";
 const HIDDEN_DISH = "Рыба дня";
@@ -163,7 +166,7 @@ agentTest("негодные аргументы tool — ошибка модел�
 agentTest("суточный лимит: исчерпан — модель не вызывается", async ({ conversation, say: guest }) => {
   const client = createServiceClient();
   for (let i = 0; i < 5; i++) {
-    await recordMessage(client, conversation.id, "out", `ответ ${i}`, "text", { ai: true, model: "m", tools: [] });
+    await recordMessage(client, conversation.id, "out", `ответ ${i}`, "text", { ...PAST_AI_REPLY, tools: [] });
   }
   // Запасные ответы ходами не считаются.
   await recordMessage(client, conversation.id, "out", "запасной", "text", { aiFallback: "error" });
@@ -176,7 +179,7 @@ agentTest("суточный лимит: исчерпан — модель не �
 agentTest("лимит не исчерпан, пока запасные ответы не в счёт", async ({ conversation, say: guest }) => {
   const client = createServiceClient();
   for (let i = 0; i < 4; i++) {
-    await recordMessage(client, conversation.id, "out", `ответ ${i}`, "text", { ai: true, model: "m", tools: [] });
+    await recordMessage(client, conversation.id, "out", `ответ ${i}`, "text", { ...PAST_AI_REPLY, tools: [] });
   }
   await recordMessage(client, conversation.id, "out", "запасной", "text", { aiFallback: "quota" });
   await guest("ещё вопрос");
@@ -189,14 +192,20 @@ agentTest("ошибки LLM → запасной ответ с причиной"
   assertEquals(await run(conversation, [{ error: "quota" }]).result, { kind: "fallback", reason: "quota" });
   assertEquals(await run(conversation, [{ error: "timeout" }]).result, { kind: "fallback", reason: "timeout" });
   assertEquals(await run(conversation, [{ error: "unavailable" }]).result, { kind: "fallback", reason: "error" });
-  assertEquals(await run(conversation, [call("listFaq"), { error: "bad_response" }]).result, { kind: "fallback", reason: "error" });
+  // Модель успела ответить раз (listFaq) — расход этого вызова сохраняется в запасном ответе.
+  const partial = await run(conversation, [call("listFaq"), { error: "bad_response" }]).result;
+  assert(partial.kind === "fallback");
+  assertEquals(partial.reason, "error");
+  assertEquals(partial.usage?.calls, 1);
 });
 
 agentTest("зацикливание на tools обрывается после лимита раундов", async ({ conversation, say: guest }) => {
   await guest("вопрос");
   const steps = Array.from({ length: MAX_TOOL_ROUNDS + 1 }, () => call("listFaq"));
   const { llm, result } = run(conversation, steps);
-  assertEquals(await result, { kind: "fallback", reason: "error" });
+  const turn = await result;
+  assert(turn.kind === "fallback");
+  assertEquals(turn.reason, "error");
   assertEquals(llm.requests.length, MAX_TOOL_ROUNDS + 1);
 });
 
@@ -204,4 +213,19 @@ agentTest("нет ключа Gemini — запасной ответ", async ({ c
   await guest("вопрос");
   const turn = await runAgentTurn({ client: createServiceClient(), llm: null }, { conversation, settings: DEFAULT_AI_SETTINGS });
   assertEquals(turn, { kind: "fallback", reason: "error" });
+});
+
+agentTest("расход хода: токены суммируются по всем вызовам модели", async ({ conversation, say: guest }) => {
+  await guest("что есть из рыбы?");
+  const { result } = run(conversation, [
+    { ...call("listMenuCategories"), usage: { input: 1000, output: 20, thoughts: 100 } },
+    { ...say("Дорада и осьминог."), usage: { input: 1500, output: 40, thoughts: 50 } },
+  ]);
+  const turn = await result;
+  assert(turn.kind === "reply");
+  assertEquals(
+    { ...turn.usage, ms: 0 },
+    { calls: 2, inputTokens: 2500, outputTokens: 60, thoughtTokens: 150, ms: 0 },
+  );
+  assert(turn.usage.ms >= 0);
 });

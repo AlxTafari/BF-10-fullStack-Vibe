@@ -102,7 +102,14 @@ Deno.test({
 
       const rows = await journal(s);
       assertEquals(rows.map((r) => [r.direction, r.kind]), [["in", "text"], ["out", "text"]]);
-      assertEquals(rows[1].meta, { ai: true, model: "fake-model", tools: ["searchMenu", "suggestActions"] });
+      const meta = rows[1].meta as Record<string, unknown>;
+      assertEquals(
+        { ai: meta.ai, model: meta.model, tools: meta.tools, calls: meta.calls },
+        { ai: true, model: "fake-model", tools: ["searchMenu", "suggestActions"], calls: 3 },
+      );
+      // Расход пишется всегда (у фейка токенов нет — нули), по нему считается статистика.
+      assertEquals([meta.inputTokens, meta.outputTokens, meta.thoughtTokens], [0, 0, 0]);
+      assert(typeof meta.ms === "number");
       assertEquals(s.llm.remaining(), 0);
     });
   },

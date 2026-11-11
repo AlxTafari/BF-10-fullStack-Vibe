@@ -8,14 +8,31 @@ export type MessageDirection = "in" | "out";
 export type MessageKind = "text" | "button" | "search";
 
 /**
+ * Расход хода агента (S09): сумма по всем вызовам модели за ход. Храним токены, а не деньги — цены меняются
+ * (у части моделей дорожают с 2027-01-01), стоимость считается при показе по таблице цен.
+ */
+export interface AiTurnUsage {
+  /** Сколько раз за ход вызывалась модель (раунды tools + финальный ответ). */
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** «Размышления» модели: оплачиваются как выход, считаются отдельно. */
+  thoughtTokens: number;
+  /** Длительность хода, мс — от первого вызова модели до ответа или сбоя. */
+  ms: number;
+}
+
+/**
  * Служебная пометка сообщения (messages.meta, S09). null — обычное сообщение.
- * - ai — ответ агента: модель и какие tools он вызвал за ход (видно в админке, по ним же суточный лимит);
+ * - ai — ответ агента: модель, какие tools он вызвал за ход и расход (видно в админке, по ним же суточный
+ *   лимит и статистика);
  * - aiFallback — агент не ответил (ошибка, таймаут, лимит), гость получил запасной ответ с кнопками.
- *   Ходом агента не считается: в лимит не идёт.
+ *   Ходом агента не считается: в лимит не идёт. Расход есть, если модель успела ответить хоть раз
+ *   (например, таймаут на третьем раунде) — эти токены тоже оплачены.
  */
 export type MessageMeta =
-  | { ai: true; model: string; tools: string[] }
-  | { aiFallback: "error" | "timeout" | "quota" | "limit" };
+  | ({ ai: true; model: string; tools: string[] } & AiTurnUsage)
+  | ({ aiFallback: "error" | "timeout" | "quota" | "limit"; model?: string } & Partial<AiTurnUsage>);
 
 export interface RestaurantRow {
   id: string;

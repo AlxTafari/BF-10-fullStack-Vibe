@@ -8,7 +8,7 @@ import { localDayBoundsUtc } from "../../domain/zonedTime.ts";
 import { type LlmClient, LlmError, type LlmMessage } from "../../llm/types.ts";
 import { countAiReplies, listRecentMessages } from "../../repositories/messagesRepo.ts";
 import { getRestaurantById } from "../../repositories/restaurantsRepo.ts";
-import type { ConversationRow, MessageKind } from "../../types.ts";
+import type { AiTurnUsage, ConversationRow, MessageKind } from "../../types.ts";
 import { getDishDetails } from "../menu.ts";
 import { runTool, SUGGEST_ACTIONS, TOOL_SCHEMAS } from "./tools.ts";
 
@@ -32,9 +32,13 @@ export type AgentSuggestion =
   | Exclude<Suggestion, { kind: "dish" }>
   | { kind: "dish"; dishId: string; name: string };
 
+/**
+ * Итог хода. usage — расход за ход; у fallback его нет, если до модели не дошли (лимит, нет ключа)
+ * или она не ответила ни разу.
+ */
 export type AgentTurnResult =
-  | { kind: "reply"; text: string; suggestions: AgentSuggestion[]; model: string; tools: string[] }
-  | { kind: "fallback"; reason: FallbackReason };
+  | { kind: "reply"; text: string; suggestions: AgentSuggestion[]; model: string; tools: string[]; usage: AiTurnUsage }
+  | { kind: "fallback"; reason: FallbackReason; model?: string; usage?: AiTurnUsage };
 
 export interface AgentDeps {
   client: SupabaseClient;
@@ -54,6 +58,12 @@ export async function runAgentTurn(
 ): Promise<AgentTurnResult> {
   const now = deps.now ?? new Date();
   const startedAt = Date.now();
+  // Расход копится по каждому ответу модели; ms ставится в конце хода (finish).
+  const usage: AiTurnUsage = { calls: 0, inputTokens: 0, outputTokens: 0, thoughtTokens: 0, ms: 0 };
+  const finish = () => ({ ...usage, ms: Date.now() - startedAt });
+  // Запасной ответ несёт расход, только если модель успела ответить: эти токены оплачены.
+  const fallback = (reason: FallbackReason): AgentTurnResult =>
+    usage.calls > 0 && deps.llm ? { kind: "fallback", reason, model: deps.llm.model, usage: finish() } : { kind: "fallback", reason };
   try {
     if (!deps.llm) return { kind: "fallback", reason: "error" };
     const llm = deps.llm;
@@ -82,7 +92,7 @@ export async function runAgentTurn(
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const left = TURN_TIMEOUT_MS - (Date.now() - startedAt);
-      if (left < MIN_CALL_MS) return { kind: "fallback", reason: "timeout" };
+      if (left < MIN_CALL_MS) return fallback("timeout");
 
       const response = await llm.generate({
         system,
@@ -90,6 +100,10 @@ export async function runAgentTurn(
         tools: TOOL_SCHEMAS,
         timeoutMs: Math.min(LLM_CALL_TIMEOUT_MS, left),
       });
+      usage.calls++;
+      usage.inputTokens += response.usage?.input ?? 0;
+      usage.outputTokens += response.usage?.output ?? 0;
+      usage.thoughtTokens += response.usage?.thoughts ?? 0;
 
       if (response.kind === "text") {
         return {
@@ -98,6 +112,7 @@ export async function runAgentTurn(
           suggestions: await onlyPublishedDishes(deps.client, suggestions),
           model: llm.model,
           tools: toolsUsed,
+          usage: finish(),
         };
       }
 
@@ -112,15 +127,16 @@ export async function runAgentTurn(
     }
     // MAX_TOOL_ROUNDS раундов tools, а ответа всё нет.
     console.error("agent: tool rounds exceeded");
-    return { kind: "fallback", reason: "error" };
+    return fallback("error");
   } catch (error) {
     if (error instanceof LlmError) {
-      console.error("agent llm error:", error.kind);
-      if (error.kind === "quota" || error.kind === "timeout") return { kind: "fallback", reason: error.kind };
-      return { kind: "fallback", reason: "error" };
+      // Текст LlmError без данных гостя (см. llm/types.ts): для quota в нём имя исчерпанного лимита.
+      console.error(`agent llm error: ${error.kind} — ${error.message}`);
+      if (error.kind === "quota" || error.kind === "timeout") return fallback(error.kind);
+      return fallback("error");
     }
     console.error("agent failed:", error instanceof Error ? error.name : "unknown");
-    return { kind: "fallback", reason: "error" };
+    return fallback("error");
   }
 }
 
