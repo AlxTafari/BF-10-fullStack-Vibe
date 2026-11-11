@@ -152,3 +152,4 @@
 - Интеграционные тесты (RPC в `chat.integration.test.ts`, сценарии ручного режима в `ai.integration.test.ts`) локально не прогонялись: Docker не запущен, а dev-БД без миграции. Прогонит job `integration` на PR.
 - Саму функцию `manager-chat` вживую не вызывали: проверить на приёмке, что шлюз пропускает JWT менеджера (`verify_jwt`) и CORS с домена админки.
 - Приёмка по спеке §5.
+- 2026-11-11, выкатка: PR #4 смержен, CI зелёный, но deploy упал на бандлинге `manager-chat`: `Relative import path "@supabase/supabase-js" not prefixed with / or ./ or ../`. Причина: у новой функции нет секции в `config.toml` с `import_map = "./functions/deno.json"` (у `telegram-webhook` и `notify-guest` есть с S08). Локальный `deno check` и job'ы checks/integration этого не ловят: они читают общий `deno.json`. Добавлена секция `[functions.manager-chat]` с `verify_jwt = true` и `import_map`. Новая функция = новая секция в `config.toml`.

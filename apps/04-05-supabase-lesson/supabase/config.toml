@@ -402,6 +402,13 @@ verify_jwt = false
 # Тот же общий deno.json, что у telegram-webhook (см. комментарий выше).
 import_map = "./functions/deno.json"
 
+# manager-chat вызывает админка с JWT менеджера (S06b): шлюз проверяет токен, членство — RPC в БД.
+[functions.manager-chat]
+verify_jwt = true
+# Без секции деплой не находит карту импортов: «Relative import path "@supabase/supabase-js" not prefixed…».
+# Локальный deno check и CI её не ловят — они читают общий deno.json сами.
+import_map = "./functions/deno.json"
+
 [analytics]
 enabled = true
 port = 54327
