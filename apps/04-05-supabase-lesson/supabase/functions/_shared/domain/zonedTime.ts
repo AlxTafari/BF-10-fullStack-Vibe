@@ -126,3 +126,16 @@ export function formatLocalDateTime(instant: Date, timeZone: string): string {
   const mm = String(w.minutes % 60).padStart(2, "0");
   return `${d}.${m}.${y} ${hh}:${mm}`;
 }
+
+/**
+ * Границы текущих суток в зоне ресторана, в UTC: [from, to). Для суточного лимита ходов агента (S09).
+ * Полночь, пропущенная переводом часов (бывает в редких зонах), — берём начало суток по UTC-смещению «сейчас».
+ */
+export function localDayBoundsUtc(now: Date, timeZone: string): { from: Date; to: Date } {
+  const today = localNow(now, timeZone).date;
+  const fallback = (date: string) => new Date(Date.parse(`${date}T00:00:00Z`) - offsetMs(now, timeZone));
+  const from = zonedDateTimeToUtc(today, "00:00", timeZone) ?? fallback(today);
+  const tomorrow = addDays(today, 1);
+  const to = zonedDateTimeToUtc(tomorrow, "00:00", timeZone) ?? fallback(tomorrow);
+  return { from, to };
+}

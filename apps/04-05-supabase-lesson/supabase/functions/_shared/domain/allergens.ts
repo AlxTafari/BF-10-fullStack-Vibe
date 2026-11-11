@@ -49,3 +49,30 @@ export function isAllergenCode(value: string): value is AllergenCode {
 export function allergenLabel(code: string): string {
   return isAllergenCode(code) ? ALLERGEN_LABELS[code] : code;
 }
+
+/** Три группы ответа на «что мне можно при аллергии на …» (S09). */
+export interface AllergenPartition<T> {
+  /** Состав указан, и ни одного из названных аллергенов в нём нет. */
+  free: T[];
+  /** Содержит хотя бы один из названных аллергенов. */
+  contains: T[];
+  /** Состав не указан (allergens = null): безопасным назвать нельзя, только «уточните у персонала». */
+  unknown: T[];
+}
+
+/**
+ * Делит блюда по аллергенам гостя — детерминированно, без LLM: модель только пересказывает группы.
+ * null ≠ []: [] — ресторан указал «аллергенов нет» (блюдо в free), null — не указал ничего (в unknown).
+ */
+export function partitionByAllergens<T extends { allergens: string[] | null }>(
+  items: T[],
+  avoid: readonly AllergenCode[],
+): AllergenPartition<T> {
+  const result: AllergenPartition<T> = { free: [], contains: [], unknown: [] };
+  for (const item of items) {
+    if (item.allergens === null) result.unknown.push(item);
+    else if (item.allergens.some((code) => (avoid as readonly string[]).includes(code))) result.contains.push(item);
+    else result.free.push(item);
+  }
+  return result;
+}

@@ -5,6 +5,7 @@ import {
   formatLocalDateTime,
   isoWeekday,
   isValidDateString,
+  localDayBoundsUtc,
   localNow,
   zonedDateTimeToUtc,
 } from "./zonedTime.ts";
@@ -53,4 +54,17 @@ Deno.test("календарные хелперы", () => {
   assertEquals(diffDays("2026-10-13", "2026-12-12"), 60);
   assertEquals(isValidDateString("2026-02-29"), false);
   assertEquals(isValidDateString("2028-02-29"), true);
+});
+
+Deno.test("localDayBoundsUtc: сутки по Афинам, а не по UTC", () => {
+  // 23:30 UTC 11.11 = 01:30 12.11 по Афинам (зима, UTC+2): сутки уже 12-е.
+  const { from, to } = localDayBoundsUtc(new Date("2026-11-11T23:30:00Z"), ATHENS);
+  assertEquals(from.toISOString(), "2026-11-11T22:00:00.000Z");
+  assertEquals(to.toISOString(), "2026-11-12T22:00:00.000Z");
+});
+
+Deno.test("localDayBoundsUtc: день перевода часов короче 24 часов", () => {
+  const { from, to } = localDayBoundsUtc(new Date("2026-03-29T12:00:00Z"), ATHENS);
+  assertEquals(from.toISOString(), "2026-03-28T22:00:00.000Z");
+  assertEquals(to.toISOString(), "2026-03-29T21:00:00.000Z");
 });
