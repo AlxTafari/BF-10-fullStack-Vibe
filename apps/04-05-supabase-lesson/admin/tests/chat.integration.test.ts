@@ -5,7 +5,8 @@
 //  3. запись клиентом запрещена (insert / update / delete); единственная запись — mark_conversation_read;
 //  4. триггер последнего сообщения (в т.ч. не по порядку), unread_count, потолок 100, монотонность отметки;
 //  5. Realtime: свой менеджер получает INSERT сообщения и UPDATE диалога, чужой — нет; формат метки = как у RPC;
-//  6. AI-слой (S09): пометка угрозы в списке, «Разобрано» (resolve_conversation_flag), статистика ai_usage_daily.
+//  6. AI-слой (S09): пометка угрозы в списке, «Разобрано» (resolve_conversation_flag), статистика ai_usage_daily;
+//  7. ручной режим (S06b): подключение, продление, отключение — только свой менеджер; истёкший режим не продлевается.
 // Запуск: pnpm test (нужны SUPABASE_* в .env корня; без них файл пропускается). Данные свои, чистятся в afterAll.
 import { type RealtimeChannel, type SupabaseClient, createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -427,6 +428,74 @@ describe.skipIf(!enabled)("Чат: курсор, RLS, триггер, непро
       expect((await anon.rpc("ai_usage_daily", range)).error).not.toBeNull();
       const tooWide = await managerA.rpc("ai_usage_daily", { p_from: "2020-01-01T00:00:00+00:00", p_to: "2026-06-05T00:00:00+00:00" });
       expect(tooWide.error?.message).toBe("invalid_range");
+    });
+  });
+
+  describe("ручной режим: менеджер в диалоге (S06b)", () => {
+    it("подключение: режим на 30 мин, сценарий сброшен, повторное — was_active; чужой и аноним — нет", async () => {
+      const conv = await conversation(restaurantA);
+      await service.from("conversations").update({ state: { flow: "booking", step: "name" } }).eq("id", conv);
+
+      expect((await managerB.rpc("begin_manager_handoff", { p_conversation_id: conv })).error?.message).toBe("not_found");
+      expect((await anon.rpc("begin_manager_handoff", { p_conversation_id: conv })).error).not.toBeNull();
+      expect((await conversationRow(conv)).handoff_until).toBeNull();
+
+      const first = await managerA.rpc("begin_manager_handoff", { p_conversation_id: conv });
+      expect(first.error).toBeNull();
+      const row1 = first.data?.[0];
+      expect(row1?.was_active).toBe(false);
+      expect(typeof row1?.chat_id).toBe("number");
+      const left = Date.parse(row1!.handoff_until) - Date.now();
+      expect(left).toBeGreaterThan(29 * 60_000);
+      expect(left).toBeLessThanOrEqual(30 * 60_000 + 5_000);
+      const after = await conversationRow(conv);
+      expect(after.state).toEqual({});
+
+      const again = await managerA.rpc("begin_manager_handoff", { p_conversation_id: conv });
+      expect(again.data?.[0]?.was_active).toBe(true);
+
+      // В списке диалогов метка видна (бейдж «Менеджер»).
+      await addMessages(conv, [{ direction: "in", text: "привет", created_at: new Date().toISOString() }]);
+      const list = await managerA.rpc("list_conversations_page", { p_before_at: nul, p_before_id: nul, p_limit: 101 });
+      const listed = (list.data as { id: string; handoff_until: string | null }[] | null)?.find((r) => r.id === conv);
+      expect(listed?.handoff_until).not.toBeNull();
+    });
+
+    it("продление: только в идущем режиме; истёкший — handoff_inactive и метка не меняется", async () => {
+      const conv = await conversation(restaurantA);
+      expect((await managerA.rpc("extend_manager_handoff", { p_conversation_id: conv })).error?.message).toBe("handoff_inactive");
+
+      const past = new Date(Date.now() - 60_000).toISOString();
+      await service.from("conversations").update({ handoff_until: past }).eq("id", conv);
+      expect((await managerA.rpc("extend_manager_handoff", { p_conversation_id: conv })).error?.message).toBe("handoff_inactive");
+      expect(Date.parse((await conversationRow(conv)).handoff_until!)).toBe(Date.parse(past));
+
+      await managerA.rpc("begin_manager_handoff", { p_conversation_id: conv });
+      expect((await managerB.rpc("extend_manager_handoff", { p_conversation_id: conv })).error?.message).toBe("not_found");
+      const ok = await managerA.rpc("extend_manager_handoff", { p_conversation_id: conv });
+      expect(ok.error).toBeNull();
+      expect(ok.data?.[0]?.handoff_until).toBeTruthy();
+    });
+
+    it("отключение: метка снята, was_active — шёл ли режим; повтор — не ошибка; чужой — not_found", async () => {
+      const conv = await conversation(restaurantA);
+      await managerA.rpc("begin_manager_handoff", { p_conversation_id: conv });
+      expect((await managerB.rpc("end_manager_handoff", { p_conversation_id: conv })).error?.message).toBe("not_found");
+
+      const ended = await managerA.rpc("end_manager_handoff", { p_conversation_id: conv });
+      expect(ended.error).toBeNull();
+      expect(ended.data?.[0]).toMatchObject({ was_active: true, restaurant_id: restaurantA });
+      expect((await conversationRow(conv)).handoff_until).toBeNull();
+
+      const twice = await managerA.rpc("end_manager_handoff", { p_conversation_id: conv });
+      expect(twice.error).toBeNull();
+      expect(twice.data?.[0]?.was_active).toBe(false);
+    });
+
+    it("менеджер не пишет handoff_until напрямую (только RPC)", async () => {
+      const conv = await conversation(restaurantA);
+      await managerA.from("conversations").update({ handoff_until: new Date(Date.now() + 3_600_000).toISOString() }).eq("id", conv);
+      expect((await conversationRow(conv)).handoff_until).toBeNull();
     });
   });
 });

@@ -18,23 +18,25 @@ export async function logMessage(
 /**
  * Последние `limit` сообщений диалога заданных видов — окно истории для агента (S09), по возрастанию времени.
  * Берём «последние N» сортировкой по убыванию (индекс messages_cursor_idx) и разворачиваем.
+ * manager — реплику написал менеджер из админки (meta.manager, S06b): агенту её надо отличать от своих.
  */
 export async function listRecentMessages(
   client: SupabaseClient,
   conversationId: string,
   kinds: MessageKind[],
   limit: number,
-): Promise<{ direction: MessageDirection; text: string }[]> {
+): Promise<{ direction: MessageDirection; text: string; manager: boolean }[]> {
   const { data, error } = await client
     .from("messages")
-    .select("direction, text")
+    .select("direction, text, meta")
     .eq("conversation_id", conversationId)
     .in("kind", kinds)
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(limit);
   if (error) throw error;
-  return ((data ?? []) as { direction: MessageDirection; text: string }[]).reverse();
+  const rows = (data ?? []) as { direction: MessageDirection; text: string; meta: Record<string, unknown> | null }[];
+  return rows.reverse().map((r) => ({ direction: r.direction, text: r.text, manager: r.meta?.manager === true }));
 }
 
 /** Сколько ответов агента ушло в диалог за [from, to) — для суточного лимита. Строки не выбираем, только счётчик. */

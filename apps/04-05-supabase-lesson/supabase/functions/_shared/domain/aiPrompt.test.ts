@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "@std/assert";
-import { AI_REPLY_MAX_LENGTH, buildHistory, buildSystemPrompt, clampReply, formatPromptNow } from "./aiPrompt.ts";
+import { AI_REPLY_MAX_LENGTH, buildHistory, buildSystemPrompt, clampReply, formatPromptNow, MANAGER_PREFIX } from "./aiPrompt.ts";
 
 Deno.test("formatPromptNow: день недели и время в зоне ресторана", () => {
   // 23:30 UTC среды = 01:30 четверга в Афинах.
@@ -55,4 +55,20 @@ Deno.test("clampReply: короткий как есть, длинный обре
   const long = clampReply("а".repeat(5000));
   assertEquals(long.length, AI_REPLY_MAX_LENGTH);
   assert(long.endsWith("…"));
+});
+
+Deno.test("buildHistory: реплика менеджера — сторона ассистента с префиксом, правило про неё в промпте", () => {
+  const turns = buildHistory([
+    { direction: "in", text: "можно стол у окна?" },
+    { direction: "out", text: "Посажу вас у окна", manager: true },
+    { direction: "out", text: "Менеджер отключился от чата." },
+    { direction: "in", text: "а во сколько?" },
+  ]);
+  assertEquals(turns, [
+    { role: "guest", text: "можно стол у окна?" },
+    { role: "assistant", text: `${MANAGER_PREFIX} Посажу вас у окна\nМенеджер отключился от чата.` },
+    { role: "guest", text: "а во сколько?" },
+  ]);
+  const prompt = buildSystemPrompt({ restaurantName: "Тест", timeZone: "Europe/Athens", now: new Date("2026-11-11T12:00:00Z") });
+  assert(prompt.includes(MANAGER_PREFIX));
 });

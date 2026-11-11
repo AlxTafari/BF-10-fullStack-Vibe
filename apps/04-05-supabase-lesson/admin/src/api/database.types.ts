@@ -124,6 +124,7 @@ export type Database = {
           external_user_id: number
           flag_reason: string | null
           flagged_at: string | null
+          handoff_until: string | null
           id: string
           last_message_at: string | null
           last_message_direction: string | null
@@ -140,6 +141,7 @@ export type Database = {
           external_user_id: number
           flag_reason?: string | null
           flagged_at?: string | null
+          handoff_until?: string | null
           id?: string
           last_message_at?: string | null
           last_message_direction?: string | null
@@ -156,6 +158,7 @@ export type Database = {
           external_user_id?: number
           flag_reason?: string | null
           flagged_at?: string | null
+          handoff_until?: string | null
           id?: string
           last_message_at?: string | null
           last_message_direction?: string | null
@@ -569,6 +572,14 @@ export type Database = {
           turns: number
         }[]
       }
+      begin_manager_handoff: {
+        Args: { p_conversation_id: string }
+        Returns: {
+          chat_id: number
+          handoff_until: string
+          was_active: boolean
+        }[]
+      }
       count_unread_conversations: { Args: never; Returns: number }
       eu_allergen_codes: { Args: never; Returns: string[] }
       get_messages_page: {
@@ -595,6 +606,21 @@ export type Database = {
         }
       }
       is_manager_of: { Args: { p_restaurant_id: string }; Returns: boolean }
+      end_manager_handoff: {
+        Args: { p_conversation_id: string }
+        Returns: {
+          chat_id: number
+          restaurant_id: string
+          was_active: boolean
+        }[]
+      }
+      extend_manager_handoff: {
+        Args: { p_conversation_id: string }
+        Returns: {
+          chat_id: number
+          handoff_until: string
+        }[]
+      }
       list_conversations_page: {
         Args: { p_before_at: string; p_before_id: string; p_limit: number }
         Returns: {
@@ -603,6 +629,7 @@ export type Database = {
           display_name: string
           flag_reason: string
           flagged_at: string
+          handoff_until: string
           id: string
           last_message_at: string
           last_message_direction: string

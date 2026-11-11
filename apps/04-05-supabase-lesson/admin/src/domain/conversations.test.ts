@@ -14,6 +14,7 @@ const row = (n: number, over: Partial<ConversationRow> = {}): ConversationRow =>
   unread_count: 0,
   flagged_at: null,
   flag_reason: null,
+  handoff_until: null,
   ...over,
 });
 /** Событие по строке: как её присылает Realtime (без unread_count). */
@@ -126,5 +127,26 @@ describe("applyConversationEvent: пометка угрозы (S09)", () => {
     expect(cleared.list.rows[0]?.flagged_at).toBeNull();
     expect(cleared.list.rows[0]?.flag_reason).toBeNull();
     expect(applyConversationEvent(cleared.list, event(row(5))).list).toBe(cleared.list);
+  });
+});
+
+describe("ручной режим (S06b)", () => {
+  it("смена handoff_until — строка обновляется без перечитывания, остальное не трогается", () => {
+    const list: Page<ConversationRow> = { rows: [row(2), row(1)], nextCursor: null };
+    const until = "2026-10-18T12:30:00+00:00";
+    const change = applyConversationEvent(list, event(row(1), { handoff_until: until }));
+    expect(change.needsRefresh).toBe(false);
+    expect(change.list.rows.find((r) => r.id === "c-1")?.handoff_until).toBe(until);
+    expect(change.list.rows.map((r) => r.id)).toEqual(["c-2", "c-1"]);
+
+    const back = applyConversationEvent(change.list, event(row(1), { handoff_until: null }));
+    expect(back.list.rows.find((r) => r.id === "c-1")?.handoff_until).toBeNull();
+  });
+
+  it("та же метка в другом формате — событие игнорируется", () => {
+    const current = row(1, { handoff_until: "2026-10-18T12:30:00+00:00" });
+    const list: Page<ConversationRow> = { rows: [current], nextCursor: null };
+    const change = applyConversationEvent(list, event(current, { handoff_until: "2026-10-18T12:30:00.000Z" }));
+    expect(change.list).toBe(list);
   });
 });

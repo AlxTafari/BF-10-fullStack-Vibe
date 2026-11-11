@@ -158,7 +158,6 @@ export function MessageFeed({
           ↓ Новые сообщения ({newCount})
         </Button>
       )}
-      <p className="border-t px-4 py-2 text-center text-xs text-muted-foreground">Менеджер отвечает гостю вне бота</p>
     </div>
   );
 }

@@ -19,6 +19,8 @@ export function MessageItem({ message, timeZone }: { message: Message; timeZone:
   const fromGuest = message.direction === "in";
   // Поиск по меню: тот же пузырь, но приглушённый и с подписью — шум, который менеджеру виден, не кричит.
   const isSearch = classifyMessage(message) === "search";
+  // Реплика менеджера (S06b) — справа, как у бота, но своим цветом и с подписью: видно, где писал человек.
+  const byManager = message.byManager;
   return (
     <div className={cn("flex", fromGuest ? "justify-start" : "justify-end")}>
       <div
@@ -28,10 +30,13 @@ export function MessageItem({ message, timeZone }: { message: Message; timeZone:
             ? "border border-dashed bg-transparent text-muted-foreground"
             : fromGuest
               ? "bg-muted"
-              : "bg-primary text-primary-foreground",
+              : byManager
+                ? "bg-emerald-600 text-white"
+                : "bg-primary text-primary-foreground",
         )}
       >
         {isSearch && <p className="mb-1 text-[10px] uppercase tracking-wide">Поиск по меню</p>}
+        {byManager && <p className="mb-1 text-[10px] uppercase tracking-wide text-white/80">Менеджер</p>}
         {/* Пометка AI (S09, из messages.meta): ответ агента или запасной ответ, когда агент не ответил. */}
         {message.ai && (
           <p className="mb-1 text-[10px] uppercase tracking-wide text-primary-foreground/70">
@@ -40,7 +45,7 @@ export function MessageItem({ message, timeZone }: { message: Message; timeZone:
         )}
         {/* pre-wrap: боты пишут многострочно; break-words: длинное слово без пробелов не ломает вёрстку */}
         <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.text}</p>
-        <p className={cn("mt-1 text-right text-[10px]", fromGuest || isSearch ? "text-muted-foreground" : "text-primary-foreground/70")}>
+        <p className={cn("mt-1 text-right text-[10px]", fromGuest || isSearch ? "text-muted-foreground" : byManager ? "text-white/80" : "text-primary-foreground/70")}>
           {formatTimeHM(message.created_at, timeZone)}
         </p>
       </div>

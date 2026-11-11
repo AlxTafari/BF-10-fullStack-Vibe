@@ -1,9 +1,11 @@
 import { type ConversationEventRow, type ConversationRow, applyConversationEvent, keyOfConversation, toEventRow } from "@/domain/conversations";
 import { type Cursor, type Page, PAGE_SIZE, buildPage, mergeFreshPage, mergePage } from "@/domain/cursor";
+import { type Delivery, managerChatErrorText } from "@/domain/handoff";
 import { type Message, applyMessageEvent, keyOfMessage } from "@/domain/messages";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { baseApi } from "./baseApi";
 import { toConversationEventRow, toConversationRow, toMessage } from "./chatMappers";
-import { toApiError } from "./errors";
+import { type ApiError, toApiError } from "./errors";
 import type { AppDispatch, RootState } from "./store";
 import { supabase } from "./supabaseClient";
 
@@ -34,6 +36,54 @@ const cursorArg = (value: string | undefined): string => (value ?? null) as stri
 
 const PANEL_LIMIT = 10;
 
+/** Ответы Edge Function manager-chat (S06b) — как их отдаёт сервис. */
+export interface JoinChatResult {
+  handoffUntil: string;
+  delivery: Delivery;
+}
+export type ManagerReplyResult =
+  | { handoffUntil: string; delivery: "sent"; recorded: boolean }
+  | { handoffUntil: string; delivery: "blocked" | "failed" };
+
+/**
+ * Вызов manager-chat. Ошибка функции (4xx/5xx) приходит как FunctionsHttpError, а код — в теле ответа
+ * ({ error: "handoff_inactive" }); его достаём из context (Response) и переводим в текст для менеджера.
+ */
+async function invokeManagerChat<T>(body: Record<string, unknown>): Promise<{ data: T } | { error: ApiError }> {
+  const { data, error } = await supabase.functions.invoke<T>("manager-chat", { body });
+  if (!error) return { data: data as T };
+  if (error instanceof FunctionsHttpError) {
+    let code: string | undefined;
+    try {
+      code = ((await error.context.json()) as { error?: string }).error;
+    } catch {
+      code = undefined;
+    }
+    return { error: { message: managerChatErrorText(code), ...(code ? { code } : {}) } };
+  }
+  return { error: toApiError(error) };
+}
+
+/**
+ * Новая метка ручного режима → кэши списка и шапки сразу, не дожидаясь Realtime (событие потом станет no-op).
+ * Шапка — по прямой ссылке диалога в загруженной странице списка может не быть.
+ */
+function applyHandoff(
+  dispatch: AppDispatch,
+  getState: () => unknown,
+  conversationId: string,
+  handoffUntil: string | null,
+): void {
+  const cached = chatApi.endpoints.getConversations.select({ cursor: null })(getState() as RootState).data;
+  const row = cached?.rows.find((r) => r.id === conversationId);
+  if (row) mergeConversationEvent(dispatch, { ...toEventRow(row), handoff_until: handoffUntil });
+  dispatch(
+    chatApi.util.updateQueryData("getConversation", conversationId, (draft) => {
+      if (draft) draft.handoff_until = handoffUntil;
+    }),
+  );
+}
+
 export const chatApi = baseApi.injectEndpoints({
   endpoints: (build) => ({
     getConversations: build.query<Page<ConversationRow>, ConversationsArgs>({
@@ -62,7 +112,7 @@ export const chatApi = baseApi.injectEndpoints({
       queryFn: async (id) => {
         const { data, error } = await supabase
           .from("conversations")
-          .select("id, display_name, channel, created_at, last_message_at, last_message_preview, last_message_direction, manager_last_read_at, flagged_at, flag_reason")
+          .select("id, display_name, channel, created_at, last_message_at, last_message_preview, last_message_direction, manager_last_read_at, flagged_at, flag_reason, handoff_until")
           .eq("id", id)
           .maybeSingle();
         if (error) return { error: toApiError(error) };
@@ -174,6 +224,51 @@ export const chatApi = baseApi.injectEndpoints({
         );
       },
     }),
+
+    // ---------------------------------------------------------------- менеджер в диалоге (S06b)
+    // Всё через Edge Function manager-chat: ей нужен Telegram, а членство проверяют RPC под JWT менеджера.
+    // Новое сообщение в ленту приходит по Realtime, как любое другое: оптимистичной вставки нет, источник правды один.
+
+    // «Подключиться к чату»: ручной режим + уведомление гостю (повторное подключение второй раз не пишет).
+    joinChat: build.mutation<JoinChatResult, string>({
+      queryFn: (conversationId) => invokeManagerChat<JoinChatResult>({ action: "join", conversation_id: conversationId }),
+      onQueryStarted: async (conversationId, { dispatch, getState, queryFulfilled }) => {
+        try {
+          const { data } = await queryFulfilled;
+          applyHandoff(dispatch, getState, conversationId, data.handoffUntil);
+        } catch {
+          // ошибку показывает компонент
+        }
+      },
+    }),
+
+    // Ответ гостю. Недоставленное (blocked / failed) — не ошибка запроса, а результат: менеджер видит причину,
+    // текст остаётся в поле. handoff_inactive — ошибка с кодом: компонент возвращает кнопку «Подключиться».
+    sendManagerReply: build.mutation<ManagerReplyResult, { conversationId: string; text: string }>({
+      queryFn: ({ conversationId, text }) => invokeManagerChat<ManagerReplyResult>({ action: "reply", conversation_id: conversationId, text }),
+      onQueryStarted: async ({ conversationId }, { dispatch, getState, queryFulfilled }) => {
+        try {
+          const { data } = await queryFulfilled;
+          applyHandoff(dispatch, getState, conversationId, data.handoffUntil);
+        } catch (e) {
+          // Режим истёк на сервере — гасим его и в кэше, чтобы вместо поля появилась кнопка «Подключиться».
+          if ((e as { error?: ApiError }).error?.code === "handoff_inactive") applyHandoff(dispatch, getState, conversationId, null);
+        }
+      },
+    }),
+
+    // «Отключиться»: разговор возвращается боту, гостю уведомление (если режим ещё шёл).
+    leaveChat: build.mutation<{ delivery: Delivery }, string>({
+      queryFn: (conversationId) => invokeManagerChat<{ delivery: Delivery }>({ action: "leave", conversation_id: conversationId }),
+      onQueryStarted: async (conversationId, { dispatch, getState, queryFulfilled }) => {
+        try {
+          await queryFulfilled;
+          applyHandoff(dispatch, getState, conversationId, null);
+        } catch {
+          // ошибку показывает компонент
+        }
+      },
+    }),
   }),
 });
 
@@ -185,6 +280,9 @@ export const {
   useGetConversationRequestsQuery,
   useMarkConversationReadMutation,
   useResolveConversationFlagMutation,
+  useJoinChatMutation,
+  useSendManagerReplyMutation,
+  useLeaveChatMutation,
 } = chatApi;
 
 // ---------------------------------------------------------------- подгрузка и вливание событий

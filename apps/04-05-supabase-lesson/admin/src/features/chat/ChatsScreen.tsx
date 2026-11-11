@@ -10,6 +10,7 @@ import { LoadError } from "@/features/common/LoadError";
 import { cn } from "@/lib/utils";
 import { ConversationList, guestName } from "./ConversationList";
 import { GuestRequestsPanel } from "./GuestRequestsPanel";
+import { HandoffBanner, ManagerComposer, useHandoffActive } from "./ManagerChat";
 import { MessageFeed } from "./MessageFeed";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -60,6 +61,9 @@ function ChatView({ conversationId, timeZone }: { conversationId: string; timeZo
   const header = useGetConversationQuery(conversationId);
   // Живая отметка прочтения берётся из списка (его обновляют события), шапка — запасной источник (прямая ссылка).
   const listRow = useGetConversationsQuery({ cursor: null }).data?.rows.find((r) => r.id === conversationId);
+  // Ручной режим (S06b) — тоже живой из списка, шапка — запасной источник. Хук до ранних return (правила хуков).
+  const handoffUntil = (listRow ?? header.data)?.handoff_until ?? null;
+  const handoffActive = useHandoffActive(handoffUntil);
 
   if (header.isLoading) return <Skeleton className="m-4 h-16" />;
   if (header.error) {
@@ -89,6 +93,10 @@ function ChatView({ conversationId, timeZone }: { conversationId: string; timeZo
           </p>
         </header>
 
+        {handoffActive && handoffUntil && (
+          <HandoffBanner conversationId={conversationId} handoffUntil={handoffUntil} timeZone={timeZone} />
+        )}
+
         {flag.flagged_at && (
           <ThreatBanner conversationId={conversationId} reason={flag.flag_reason} at={flag.flagged_at} timeZone={timeZone} />
         )}
@@ -102,6 +110,7 @@ function ChatView({ conversationId, timeZone }: { conversationId: string; timeZo
         </details>
 
         <MessageFeed conversationId={conversationId} timeZone={timeZone} readAt={readAt} />
+        <ManagerComposer conversationId={conversationId} active={handoffActive} />
       </div>
 
       <aside className="hidden w-72 shrink-0 space-y-3 overflow-y-auto border-l p-3 xl:block">

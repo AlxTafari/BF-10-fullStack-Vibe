@@ -344,3 +344,60 @@ Deno.test({
       assertEquals(s.llm.requests.length, 0);
     }),
 });
+
+// ---------------------------------------------------------------- менеджер в диалоге (S06b)
+
+/** Ручной режим диалога гостя: метку ставим напрямую (в жизни — RPC менеджера через manager-chat). */
+async function setHandoff(s: AiScenario, until: Date | null): Promise<void> {
+  const { error } = await s.client.from("conversations")
+    .update({ handoff_until: until?.toISOString() ?? null })
+    .eq("id", await s.guest.conversationId());
+  if (error) throw error;
+}
+
+Deno.test({
+  ...opts,
+  name: "S06b: менеджер в диалоге — текст гостя записан, бот молчит, модель не вызывается; кнопки работают",
+  fn: () =>
+    aiScenario([], async (s) => {
+      await s.guest.text("/start");
+      await setHandoff(s, new Date(Date.now() + 30 * 60_000));
+      const sentBefore = s.tg.calls.filter((c) => c.method === "sendMessage").length;
+
+      await s.guest.text("хочу стол у окна, можно?");
+      assertEquals(s.tg.calls.filter((c) => c.method === "sendMessage").length, sentBefore, "бот не отвечает");
+      assertEquals(s.llm.requests.length, 0, "агент не вызывается");
+      const last = (await journal(s)).at(-1)!;
+      assertEquals([last.direction, last.kind, last.text], ["in", "text", "хочу стол у окна, можно?"]);
+
+      // Кнопки — навигация, а не разговор: работают и в ручном режиме.
+      await s.guest.tap(MENU_MAIN);
+      assertEquals(s.guest.screen().keyboard, MAIN_MENU_KEYBOARD);
+    }),
+});
+
+Deno.test({
+  ...opts,
+  name: "S06b: истёкший ручной режим — снова отвечает агент, реплика менеджера в истории с префиксом",
+  fn: () =>
+    aiScenario([answer("Столик у окна уточнит менеджер.", [])], async (s) => {
+      await s.guest.text("/start");
+      const { error } = await s.client.from("messages").insert({
+        conversation_id: await s.guest.conversationId(),
+        direction: "out",
+        kind: "text",
+        text: "Посажу вас у окна",
+        meta: { manager: true, managerId: crypto.randomUUID() },
+      });
+      if (error) throw error;
+      await setHandoff(s, new Date(Date.now() - 60_000));
+
+      await s.guest.text("а во сколько можно прийти?");
+      assertEquals(s.guest.screen().text, "Столик у окна уточнит менеджер.");
+      const history = s.llm.requests[0].messages;
+      assert(
+        history.some((m) => m.role === "model" && m.text?.includes("[Restaurant manager]: Посажу вас у окна")),
+        "реплика менеджера помечена для модели",
+      );
+    }),
+});
