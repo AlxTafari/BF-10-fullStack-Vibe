@@ -1,4 +1,5 @@
 import type { MenuItemRow } from "../types.ts";
+import { allergenLabel } from "./allergens.ts";
 import { formatPrice } from "./formatPrice.ts";
 import { NO_DATA, valueOrNoData } from "./formatRestaurantInfo.ts";
 
@@ -33,10 +34,11 @@ function formatNutrition(item: DishCardData): string {
   return `${nutrientOrDash(kcal)} ккал · Б ${nutrientOrDash(p)} · Ж ${nutrientOrDash(f)} · У ${nutrientOrDash(c)}`;
 }
 
+// В БД — коды справочника ЕС (S09), гостю — русские подписи.
 function formatAllergens(allergens: string[] | null): string {
   if (allergens === null) return NO_DATA;
   if (allergens.length === 0) return "нет (по данным карточки)";
-  return allergens.join(", ");
+  return allergens.map(allergenLabel).join(", ");
 }
 
 export function formatDishCard(item: DishCardData): string {

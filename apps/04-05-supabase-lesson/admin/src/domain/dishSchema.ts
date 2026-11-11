@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EU_ALLERGEN_CODES, isAllergenCode } from "./allergens";
 
 // Форма блюда. Значения — строки как в полях ввода; правила «пусто → null, 0 → 0» живут здесь и в toDishPayload.
 // Валидация зеркалит check-ограничения БД, чтобы ошибка показывалась в поле, а не как «violates check constraint».
@@ -65,7 +66,8 @@ export const dishSchema = z
     fat_per_portion: optionalNumber(NUTRIENT),
     carbs_per_portion: optionalNumber(NUTRIENT),
     allergenMode: z.enum(["unset", "none", "list"]),
-    allergenTags: z.array(z.string()),
+    // Только коды справочника ЕС — как check menu_items_allergens_eu в БД.
+    allergenTags: z.array(z.enum(EU_ALLERGEN_CODES)),
     photo_url: z
       .string()
       .trim()
@@ -78,7 +80,7 @@ export const dishSchema = z
       ctx.addIssue({
         code: "custom",
         path: ["allergenTags"],
-        message: "Добавьте аллерген или выберите «Аллергенов нет»",
+        message: "Отметьте аллерген или выберите «Аллергенов нет»",
       });
     }
   });
@@ -158,7 +160,8 @@ export function toFormValues(d: DishRecord): DishFormValues {
     carbs_per_portion: num(d.carbs_per_portion),
     // null = «не указано», [] = «указано: аллергенов нет», иначе список.
     allergenMode: d.allergens === null ? "unset" : d.allergens.length === 0 ? "none" : "list",
-    allergenTags: d.allergens ?? [],
+    // В БД только коды справочника (check), фильтр лишь сужает тип string → AllergenCode.
+    allergenTags: (d.allergens ?? []).filter(isAllergenCode),
     photo_url: text(d.photo_url),
     is_published: d.is_published,
     is_available: d.is_available,
@@ -200,20 +203,6 @@ export function lacksNutrition(d: Pick<DishRecord, "kcal_per_portion" | "protein
     d.fat_per_portion === null ||
     d.carbs_per_portion === null
   );
-}
-
-/**
- * Добавление аллергена-тега: trim, пустые и точные дубли игнорируются.
- * Регистр не меняем («Орехи» и «орехи» — разные теги, решать менеджеру).
- */
-export function addTag(tags: readonly string[], input: string): string[] {
-  const tag = input.trim();
-  if (tag === "" || tags.includes(tag)) return [...tags];
-  return [...tags, tag];
-}
-
-export function removeTag(tags: readonly string[], tag: string): string[] {
-  return tags.filter((t) => t !== tag);
 }
 
 /** Лимит бота: на экране категории помещается 10 блюд (STATE §2), остальные — поиском. */

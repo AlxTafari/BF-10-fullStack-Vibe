@@ -122,6 +122,8 @@ export type Database = {
           created_at: string
           display_name: string | null
           external_user_id: number
+          flag_reason: string | null
+          flagged_at: string | null
           id: string
           last_message_at: string | null
           last_message_direction: string | null
@@ -136,6 +138,8 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           external_user_id: number
+          flag_reason?: string | null
+          flagged_at?: string | null
           id?: string
           last_message_at?: string | null
           last_message_direction?: string | null
@@ -150,6 +154,8 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           external_user_id?: number
+          flag_reason?: string | null
+          flagged_at?: string | null
           id?: string
           last_message_at?: string | null
           last_message_direction?: string | null
@@ -392,6 +398,7 @@ export type Database = {
           direction: string
           id: string
           kind: string
+          meta: Json | null
           text: string
         }
         Insert: {
@@ -400,6 +407,7 @@ export type Database = {
           direction: string
           id?: string
           kind?: string
+          meta?: Json | null
           text: string
         }
         Update: {
@@ -408,6 +416,7 @@ export type Database = {
           direction?: string
           id?: string
           kind?: string
+          meta?: Json | null
           text?: string
         }
         Relationships: [
@@ -434,6 +443,35 @@ export type Database = {
           update_id?: number
         }
         Relationships: []
+      }
+      restaurant_ai_settings: {
+        Row: {
+          ai_enabled: boolean
+          daily_turn_limit: number
+          history_window: number
+          restaurant_id: string
+        }
+        Insert: {
+          ai_enabled?: boolean
+          daily_turn_limit?: number
+          history_window?: number
+          restaurant_id: string
+        }
+        Update: {
+          ai_enabled?: boolean
+          daily_turn_limit?: number
+          history_window?: number
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_ai_settings_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       restaurant_managers: {
         Row: {
@@ -515,6 +553,7 @@ export type Database = {
     }
     Functions: {
       count_unread_conversations: { Args: never; Returns: number }
+      eu_allergen_codes: { Args: never; Returns: string[] }
       get_messages_page: {
         Args: {
           p_before_created_at: string
@@ -528,6 +567,7 @@ export type Database = {
           direction: string
           id: string
           kind: string
+          meta: Json | null
           text: string
         }[]
         SetofOptions: {

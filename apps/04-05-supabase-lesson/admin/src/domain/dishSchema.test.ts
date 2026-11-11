@@ -4,11 +4,9 @@ import {
   NO_CATEGORY,
   type DishFormValues,
   type DishRecord,
-  addTag,
   dishSchema,
   lacksNutrition,
   parseNumber,
-  removeTag,
   toDishPayload,
   toFormValues,
 } from "./dishSchema";
@@ -76,9 +74,13 @@ describe("dishSchema", () => {
   });
   it("аллергены: режим «Указать» без тегов — ошибка, остальные режимы без тегов можно", () => {
     expect(ok({ allergenMode: "list", allergenTags: [] })).toBe(false);
-    expect(ok({ allergenMode: "list", allergenTags: ["орехи"] })).toBe(true);
+    expect(ok({ allergenMode: "list", allergenTags: ["nuts"] })).toBe(true);
     expect(ok({ allergenMode: "none" })).toBe(true);
     expect(ok({ allergenMode: "unset" })).toBe(true);
+  });
+  it("аллергены: только коды справочника ЕС, свободный текст не проходит", () => {
+    // Вне enum: проверка схемы на данных «из старой админки», тип обходим намеренно.
+    expect(ok({ allergenMode: "list", allergenTags: ["орехи"] as unknown as ["nuts"] })).toBe(false);
   });
 });
 
@@ -99,11 +101,11 @@ describe("toDishPayload", () => {
     expect(toDishPayload(valid({ category_id: "abc" })).category_id).toBe("abc");
   });
   it("три состояния аллергенов: null / [] / список", () => {
-    expect(toDishPayload(valid({ allergenMode: "unset", allergenTags: ["x"] })).allergens).toBeNull();
-    expect(toDishPayload(valid({ allergenMode: "none", allergenTags: ["x"] })).allergens).toEqual([]);
-    expect(toDishPayload(valid({ allergenMode: "list", allergenTags: ["орехи", "молоко"] })).allergens).toEqual([
-      "орехи",
-      "молоко",
+    expect(toDishPayload(valid({ allergenMode: "unset", allergenTags: ["nuts"] })).allergens).toBeNull();
+    expect(toDishPayload(valid({ allergenMode: "none", allergenTags: ["nuts"] })).allergens).toEqual([]);
+    expect(toDishPayload(valid({ allergenMode: "list", allergenTags: ["nuts", "milk"] })).allergens).toEqual([
+      "nuts",
+      "milk",
     ]);
   });
 });
@@ -136,10 +138,10 @@ describe("toFormValues", () => {
   it("аллергены: [] → режим «нет», null → «не указано», список → «указать»", () => {
     expect(toFormValues(record).allergenMode).toBe("none");
     expect(toFormValues({ ...record, allergens: null }).allergenMode).toBe("unset");
-    expect(toFormValues({ ...record, allergens: ["орехи"] })).toMatchObject({ allergenMode: "list", allergenTags: ["орехи"] });
+    expect(toFormValues({ ...record, allergens: ["nuts"] })).toMatchObject({ allergenMode: "list", allergenTags: ["nuts"] });
   });
   it("круговой обход не меняет данные", () => {
-    for (const allergens of [null, [], ["орехи", "глютен"]]) {
+    for (const allergens of [null, [], ["cereals_gluten", "nuts"]]) {
       const r = { ...record, allergens, protein_per_portion: 3.5 };
       const { name, ...rest } = toDishPayload(toFormValues(r));
       expect({ name, ...rest }).toEqual(r);
@@ -155,14 +157,3 @@ describe("lacksNutrition", () => {
   });
 });
 
-describe("теги аллергенов", () => {
-  it("trim, без пустых и дублей, регистр не меняется", () => {
-    expect(addTag([], "  орехи ")).toEqual(["орехи"]);
-    expect(addTag(["орехи"], "орехи")).toEqual(["орехи"]);
-    expect(addTag(["орехи"], "Орехи")).toEqual(["орехи", "Орехи"]);
-    expect(addTag(["орехи"], "   ")).toEqual(["орехи"]);
-  });
-  it("removeTag", () => {
-    expect(removeTag(["a", "b"], "a")).toEqual(["b"]);
-  });
-});
