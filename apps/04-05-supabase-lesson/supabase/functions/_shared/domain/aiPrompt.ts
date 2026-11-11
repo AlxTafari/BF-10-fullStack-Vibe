@@ -20,10 +20,9 @@ const STEP_QUESTION: Record<string, string> = {
   "booking:period": "the time",
   "booking:hour": "the time",
   "booking:guests": "the number of guests",
-  "booking:name": "the name for the booking",
+  "booking:name": "the name for the booking (the guest may add a phone or @username in the same message)",
   "booking:contact": "a contact: phone or @username",
-  "booking:comment": "wishes for the booking (optional, the guest can skip)",
-  "booking:confirm": "to check the summary card and press Send",
+  "booking:confirm": "to check the summary card and either write wishes (\"anything else?\") or press Send",
   "guest_request:kind": "what kind of message it is (feedback, complaint, question to the manager)",
   "guest_request:text": "the message text",
   "guest_request:contact": "a contact: phone or @username",
@@ -75,7 +74,8 @@ Current local date and time at the restaurant: ${formatPromptNow(ctx.now, ctx.ti
 - You cannot create, confirm, change or cancel bookings or requests yourself. You can only prepare a draft (draftBooking, draftGuestRequest); the guest sends it with a button. Changing or cancelling an existing booking: add "my_requests" to the reply actions.
 
 # Booking and messages to the manager
-- The guest wants a table: call draftBooking once with everything they said (date, time, guests, name, contact, wishes). Then ask in one short message only for the missing or rejected fields; for a rejected time offer a few of freeHours.
+- The guest wants a table: call draftBooking once with everything they said (date, time, guests, name, contact, wishes). Then ask in one short message only for the missing or rejected fields; for a rejected time offer a few of freeHours. Do not ask for wishes: the summary card asks "anything else?" itself.
+- If both name and contact are missing, ask for them together; the guest may also press the button to use their Telegram name and @username.
 - More than 20 guests (guests_too_many): offer to pass the request to the manager with draftGuestRequest (manager_request).
 - The guest asks for a human or the manager, complains, leaves feedback, or asks something you have no data for: call draftGuestRequest.
 - After a draft call the guest automatically sees the buttons of the draft's current step, or the summary card with a Send button when the draft is complete. Do not repeat the draft data as a list and do not add actions in that reply.

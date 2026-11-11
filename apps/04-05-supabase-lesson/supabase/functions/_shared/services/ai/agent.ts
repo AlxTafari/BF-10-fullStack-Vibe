@@ -10,7 +10,7 @@ import { type LlmClient, LlmError, type LlmMessage } from "../../llm/types.ts";
 import { countAiReplies, listRecentMessages } from "../../repositories/messagesRepo.ts";
 import { getRestaurantById } from "../../repositories/restaurantsRepo.ts";
 import type { AiTurnUsage, ConversationRow, MessageKind } from "../../types.ts";
-import { getFlowState } from "../flow.ts";
+import { getFlowState, type GuestIdentity } from "../flow.ts";
 import { getDishDetails } from "../menu.ts";
 import { type FlowHolder, REPLY, runTool, TOOL_SCHEMAS } from "./tools.ts";
 
@@ -70,7 +70,7 @@ export interface AgentDeps {
  */
 export async function runAgentTurn(
   deps: AgentDeps,
-  input: { conversation: ConversationRow; settings: AiSettings; username?: string | null },
+  input: { conversation: ConversationRow; settings: AiSettings; guest?: GuestIdentity },
 ): Promise<AgentTurnResult> {
   const now = deps.now ?? new Date();
   const startedAt = Date.now();
@@ -106,7 +106,7 @@ export async function runAgentTurn(
       t.role === "guest" ? { role: "user", text: t.text } : { role: "model", text: t.text }
     );
     const system = buildSystemPrompt({ restaurantName: restaurant.name, timeZone: restaurant.timezone, now, flow: flow.state });
-    const toolCtx = { client: deps.client, conversationId: conversation.id, now, username: input.username ?? null, flow };
+    const toolCtx = { client: deps.client, conversationId: conversation.id, now, guest: input.guest ?? { username: null, firstName: null }, flow };
     // Какие tools с данными агент вызвал за ход (для журнала); reply — сам ответ, в список не идёт.
     const toolsUsed: string[] = [];
     const done = async (text: string, suggestions: Suggestion[]): Promise<AgentTurnResult> => ({

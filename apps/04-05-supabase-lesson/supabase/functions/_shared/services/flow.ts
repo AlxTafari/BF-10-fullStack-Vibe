@@ -47,14 +47,23 @@ export async function cancelFlow(client: SupabaseClient, conversationId: string)
 
 // ---------------------------------------------------------------- запуск и шаги сценария
 
-async function loadEnv(client: SupabaseClient, username: string | null): Promise<FlowEnv> {
+/** Гость из текущего апдейта Telegram: для кнопок «Использовать мой @username» / «Использовать Telegram». */
+export interface GuestIdentity {
+  /** @username без @. */
+  username: string | null;
+  /** Имя из профиля Telegram. */
+  firstName: string | null;
+}
+
+async function loadEnv(client: SupabaseClient, guest: GuestIdentity): Promise<FlowEnv> {
   const restaurant = await getRestaurant(client);
   if (!restaurant) throw new Error("ресторан не заведён");
   return {
     now: new Date(),
     timeZone: restaurant.timezone,
     openingHours: restaurant.opening_hours,
-    username,
+    username: guest.username,
+    firstName: guest.firstName,
     newDraftId: () => crypto.randomUUID(),
   };
 }
@@ -64,9 +73,9 @@ export async function startFlow(
   client: SupabaseClient,
   conversationId: string,
   flow: FlowState["flow"],
-  username: string | null,
+  guest: GuestIdentity,
 ): Promise<AdvanceResult> {
-  const env = await loadEnv(client, username);
+  const env = await loadEnv(client, guest);
   const result = flow === "booking" ? startBooking(env) : startGuestRequest(env);
   await saveFlowState(client, conversationId, result.state);
   return result;
@@ -80,9 +89,9 @@ export async function startChangeFlow(
   client: SupabaseClient,
   conversationId: string,
   bookingId: string,
-  username: string | null,
+  guest: GuestIdentity,
 ): Promise<AdvanceResult | null> {
-  const env = await loadEnv(client, username);
+  const env = await loadEnv(client, guest);
   const details = await getMyBooking(client, conversationId, bookingId, env.now);
   if (!details?.canChange) return null;
   const { booking } = details;
@@ -103,9 +112,9 @@ export async function continueFlow(
   conversationId: string,
   state: FlowState,
   input: FlowInput,
-  username: string | null,
+  guest: GuestIdentity,
 ): Promise<AdvanceResult> {
-  const env = await loadEnv(client, username);
+  const env = await loadEnv(client, guest);
   const result = state.flow === "booking"
     ? advanceBooking(state, input, env)
     : advanceGuestRequest(state, input, env);
@@ -128,9 +137,9 @@ export async function draftBookingFromAgent(
   conversationId: string,
   current: FlowState | null,
   input: BookingDraftInput,
-  username: string | null,
+  guest: GuestIdentity,
 ): Promise<BookingDraftOutcome> {
-  const env = await loadEnv(client, username);
+  const env = await loadEnv(client, guest);
   const outcome = applyBookingDraft(current, input, env);
   await saveFlowState(client, conversationId, outcome.result.state);
   return outcome;
@@ -142,9 +151,9 @@ export async function draftGuestRequestFromAgent(
   conversationId: string,
   current: FlowState | null,
   input: GuestRequestDraftInput,
-  username: string | null,
+  guest: GuestIdentity,
 ): Promise<DraftOutcome<GuestRequestDraftField>> {
-  const env = await loadEnv(client, username);
+  const env = await loadEnv(client, guest);
   const outcome = applyGuestRequestDraft(current, input, env);
   await saveFlowState(client, conversationId, outcome.result.state);
   return outcome;

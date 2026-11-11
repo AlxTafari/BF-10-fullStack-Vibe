@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
   looksLikeName,
+  splitNameAndContact,
   validateComment,
   validateContact,
   validateGuests,
@@ -57,4 +58,13 @@ Deno.test("looksLikeName: имя — да, вопрос, телефон, дли�
   assertEquals(looksLikeName("а детские стулья есть?"), false);
   assertEquals(looksLikeName("Иван +79991234567"), false);
   assertEquals(looksLikeName("давай лучше в восемь вечера"), false);
+});
+
+Deno.test("splitNameAndContact: имя и контакт в любом порядке, без контакта или с фразой — null", () => {
+  assertEquals(splitNameAndContact("Анна +30 690 123 4567"), { name: "Анна", contact: "+306901234567" });
+  assertEquals(splitNameAndContact("Анна, @anna_k"), { name: "Анна", contact: "@anna_k" });
+  assertEquals(splitNameAndContact("@anna_k Анна"), { name: "Анна", contact: "@anna_k" });
+  assertEquals(splitNameAndContact("8 (999) 123-45-67"), { name: null, contact: "89991234567" });
+  assertEquals(splitNameAndContact("Анна"), null);
+  assertEquals(splitNameAndContact("а можно позвонить по +30 690 123 4567?"), null);
 });

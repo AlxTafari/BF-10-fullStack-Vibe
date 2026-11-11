@@ -148,7 +148,6 @@ async function fillBooking(guest: TestGuest): Promise<void> {
     else if (text.includes("Сколько будет гостей")) await guest.text("2");
     else if (text.includes("На чьё имя")) await guest.text("Тест Гость");
     else if (text.includes("телефон или @username")) await guest.text("+302310000000");
-    else if (text.startsWith("Пожелания")) await guest.tapWhere(hasAction("skip"));
     else throw new Error(`неожиданный экран брони:\n${text}`);
   }
   throw new Error(`бронь не дошла до подтверждения:\n${guest.screen().text}`);
@@ -335,7 +334,7 @@ Deno.test({
       await s.guest.tapWhere(hasAction("send")); // A: заявка создана, черновик закрыт, гость получил итог
 
       // B: тот же черновик из устаревшего контекста.
-      const advanced = await continueFlow(s.client, conversationId, staleState, { type: "action", action: "send" }, null);
+      const advanced = await continueFlow(s.client, conversationId, staleState, { type: "action", action: "send" }, { username: null, firstName: null });
       assertEquals(advanced.reply.screen.screen, "submit");
       const { data: between } = await s.client.from("conversations").select("state").eq("id", conversationId).single();
       assertEquals(between!.state, {}, "отставший обработчик записал отправленный черновик обратно");

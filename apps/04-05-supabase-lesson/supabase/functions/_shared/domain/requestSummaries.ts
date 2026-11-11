@@ -26,7 +26,7 @@ export function buildBookingSummary(data: BookingData): string {
     `👥 Гостей: ${data.guests ?? NO_COMMENT}`,
     `👤 Имя: ${data.name ?? NO_COMMENT}`,
     `📞 Контакт: ${data.contact ?? NO_COMMENT}`,
-    `💬 Комментарий: ${data.comment ?? NO_COMMENT}`,
+    `💬 Пожелания: ${data.comment ?? NO_COMMENT}`,
   ].join("\n");
 }
 

@@ -5,7 +5,11 @@ import type { OpeningHours, PeriodId, SlotError } from "./bookingRules.ts";
 /** Брошенный сценарий через столько перестаёт быть живым: «привет» не принимается за имя. */
 export const FLOW_TTL_MS = 30 * 60 * 1000;
 
-export type BookingStep = "date" | "period" | "hour" | "guests" | "name" | "contact" | "comment" | "confirm";
+/**
+ * Шагов «комментарий» нет: пожелание гость пишет на карточке-сводке («Что-нибудь ещё?») или сразу в первой фразе
+ * агенту (S09, сессия 3).
+ */
+export type BookingStep = "date" | "period" | "hour" | "guests" | "name" | "contact" | "confirm";
 export type GuestRequestStep = "kind" | "text" | "contact" | "confirm";
 export type GuestRequestKind = "feedback" | "complaint" | "manager_request";
 
@@ -18,7 +22,7 @@ export interface BookingData {
   guests?: number;
   name?: string;
   contact?: string;
-  /** undefined = шаг ещё не пройден, null = гость пропустил. */
+  /** Пожелания. undefined или null — нет (null — у черновиков до S09 и при изменении брони без комментария). */
   comment?: string | null;
 }
 
@@ -72,6 +76,8 @@ export interface FlowEnv {
   openingHours: OpeningHours | null;
   /** @username гостя из текущего апдейта (без @), если он у него есть. */
   username: string | null;
+  /** Имя из профиля Telegram — для кнопки «Использовать Telegram» на шаге имени. */
+  firstName: string | null;
   /** Генератор draftId — в тестах подменяется. */
   newDraftId: () => string;
 }
@@ -87,12 +93,16 @@ export type FlowScreen =
   /** keepGuests — в режиме изменения: кнопка «Оставить N». */
   | { screen: "ask_guests"; keepGuests?: number }
   | { screen: "too_many_guests" }
-  | { screen: "ask_name" }
+  /**
+   * withContact — контакта ещё нет: можно написать имя вместе с телефоном. telegram — кнопка «Использовать Telegram»:
+   * имя из профиля (если годится) и @username одним нажатием.
+   */
+  | { screen: "ask_name"; withContact: boolean; telegram: { name: string | null; username: string } | null }
   | { screen: "ask_contact"; canUseUsername: boolean; optional: boolean }
-  | { screen: "ask_comment" }
   | { screen: "ask_kind" }
   | { screen: "ask_text"; kind: GuestRequestKind }
-  | { screen: "confirm"; flow: FlowState["flow"]; summary: string; isChange?: boolean }
+  /** askMore — бронь: под сводкой «Что-нибудь ещё?», текст гостя дописывается в пожелания. */
+  | { screen: "confirm"; flow: FlowState["flow"]; summary: string; isChange?: boolean; askMore?: boolean }
   /** Гость подтвердил: вызывающий создаёт заявку из state.data. Состояние не меняется. */
   | { screen: "submit" };
 
@@ -128,7 +138,7 @@ export interface DraftOutcome<F extends string> {
 
 // ---------------------------------------------------------------- разбор из jsonb
 
-const BOOKING_STEPS: BookingStep[] = ["date", "period", "hour", "guests", "name", "contact", "comment", "confirm"];
+const BOOKING_STEPS: BookingStep[] = ["date", "period", "hour", "guests", "name", "contact", "confirm"];
 const GUEST_STEPS: GuestRequestStep[] = ["kind", "text", "contact", "confirm"];
 
 /**

@@ -83,7 +83,7 @@ export async function replyNav(
     return;
   }
 
-  await sendNav(ctx, screen, text, keyboard, last?.messageId ?? null, decision.deleteId, meta);
+  await sendNav(ctx, screen, text, keyboard, last?.messageId ?? null, decision.deleteId, meta, decision.clearId ?? null);
 }
 
 /** Порядок «сначала отправить, потом удалить»: при сбое в худшем случае два одинаковых сообщения, а не ни одного. */
@@ -95,6 +95,7 @@ async function sendNav(
   expected: number | null,
   deleteId: number | null,
   meta?: MessageMeta,
+  clearId: number | null = null,
 ): Promise<void> {
   const messageId = await ctx.tg.sendMessage(ctx.chatId, text, keyboard);
 
@@ -108,6 +109,9 @@ async function sendNav(
 
   if (won === true && deleteId !== null) {
     await bestEffort("deleteMessage", () => ctx.tg.deleteMessage(ctx.chatId, deleteId));
+  } else if (won === true && clearId !== null) {
+    // Сценарий (BUG-002): прежний вопрос остаётся в истории, кнопки с него снимаются.
+    await bestEffort("clearKeyboard", () => ctx.tg.clearKeyboard(ctx.chatId, clearId));
   } else if (won === false) {
     // Параллельный апдейт записался раньше. Тот же экран — двойной тап: в чате остаётся сообщение победителя,
     // свою отправку убираем. Другой экран — два разных быстрых нажатия: наше сообщение остаётся, просто не отслеживается.

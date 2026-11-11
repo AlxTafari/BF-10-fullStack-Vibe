@@ -15,7 +15,7 @@ import type { BookingDraftInput } from "../../domain/bookingDraft.ts";
 import { type AdvanceResult, type FlowState, GUEST_REQUEST_KINDS } from "../../domain/flowState.ts";
 import { isContactRequired } from "../../domain/guestRequestFlow.ts";
 import { getFaqAnswer, listFaq } from "../faq.ts";
-import { draftBookingFromAgent, draftGuestRequestFromAgent } from "../flow.ts";
+import { draftBookingFromAgent, draftGuestRequestFromAgent, type GuestIdentity } from "../flow.ts";
 import { type DishSummary, filterMenuByAllergens, getDishDetails, listMenuCategories, searchMenu } from "../menu.ts";
 import { getMyBooking, listMyRequests } from "../myRequests.ts";
 import { getRestaurantInfo } from "../restaurantInfo.ts";
@@ -45,8 +45,8 @@ export interface ToolContext {
   client: SupabaseClient;
   conversationId: string;
   now: Date;
-  /** @username гостя без @: для кнопки «Использовать мой @username» на шаге контакта. */
-  username: string | null;
+  /** Гость Telegram: для кнопок «Использовать мой @username» / «Использовать Telegram» на шагах черновика. */
+  guest: GuestIdentity;
   flow: FlowHolder;
 }
 
@@ -291,7 +291,7 @@ const TOOLS: ToolDefinition[] = [
           guests: { type: "integer", description: "number of guests" },
           name: { type: "string", description: "name for the booking" },
           contact: { type: "string", description: "phone number or Telegram @username" },
-          comment: { type: "string", description: "wishes: high chair, window table, occasion" },
+          comment: { type: "string", description: "wishes the guest mentioned: high chair, window table, occasion (all of them, replaces the previous value)" },
         },
       },
     },
@@ -305,7 +305,7 @@ const TOOLS: ToolDefinition[] = [
         comment: draftString(args, "comment"),
       };
       const o = await inDraftQueue(ctx.flow, async () => {
-        const outcome = await draftBookingFromAgent(ctx.client, ctx.conversationId, ctx.flow.state, input, ctx.username);
+        const outcome = await draftBookingFromAgent(ctx.client, ctx.conversationId, ctx.flow.state, input, ctx.guest);
         ctx.flow.state = outcome.result.state;
         ctx.flow.changed = outcome.result;
         return outcome;
@@ -342,7 +342,7 @@ const TOOLS: ToolDefinition[] = [
     async run(ctx, args) {
       const input = { kind: draftString(args, "kind"), text: draftString(args, "text"), contact: draftString(args, "contact") };
       const o = await inDraftQueue(ctx.flow, async () => {
-        const outcome = await draftGuestRequestFromAgent(ctx.client, ctx.conversationId, ctx.flow.state, input, ctx.username);
+        const outcome = await draftGuestRequestFromAgent(ctx.client, ctx.conversationId, ctx.flow.state, input, ctx.guest);
         ctx.flow.state = outcome.result.state;
         ctx.flow.changed = outcome.result;
         return outcome;

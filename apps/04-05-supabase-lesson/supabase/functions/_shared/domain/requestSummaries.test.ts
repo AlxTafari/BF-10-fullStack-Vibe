@@ -11,7 +11,7 @@ Deno.test("дата с днём недели", () => {
   assertEquals(formatDate("2026-10-20"), "вт, 20.10.2026");
 });
 
-Deno.test("сводка брони: все поля, комментарий null → прочерк", () => {
+Deno.test("сводка брони: все поля, пожеланий нет → прочерк", () => {
   const s = buildBookingSummary({
     date: "2026-10-20",
     time: "19:00",
@@ -20,7 +20,7 @@ Deno.test("сводка брони: все поля, комментарий null
     contact: "@anna_k",
     comment: null,
   });
-  for (const part of ["вт, 20.10.2026", "19:00", "Гостей: 4", "Анна", "@anna_k", "Комментарий: —"]) {
+  for (const part of ["вт, 20.10.2026", "19:00", "Гостей: 4", "Анна", "@anna_k", "Пожелания: —"]) {
     assertStringIncludes(s, part);
   }
 });

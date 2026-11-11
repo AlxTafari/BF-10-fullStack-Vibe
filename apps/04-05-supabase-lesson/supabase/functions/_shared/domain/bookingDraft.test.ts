@@ -14,6 +14,7 @@ const env = (over: Partial<FlowEnv> = {}): FlowEnv => ({
   timeZone: "Europe/Athens",
   openingHours: HOURS,
   username: "anna_k",
+  firstName: "Анна",
   newDraftId: () => "11111111-2222-3333-4444-555555555555",
   ...over,
 });
@@ -32,19 +33,24 @@ Deno.test("одна фраза: дата, время, гости → новый 
   const s = o.result.state as BookingState;
   assertEquals(s.flow, "booking");
   assertEquals(s.step, "name");
-  // comment: null — в диалоге его не спрашивают.
-  assertEquals(s.data, { date: "2026-10-14", period: "dinner", time: "19:00", guests: 4, comment: null });
+  assertEquals(s.data, { date: "2026-10-14", period: "dinner", time: "19:00", guests: 4 });
   assertEquals(o.accepted, ["date", "time", "guests"]);
   assertEquals(o.errors, {});
   assertEquals(o.missing, ["name", "contact"]);
-  assertEquals(o.result.reply.screen, { screen: "ask_name" });
+  // Контакта нет: имя можно сразу с телефоном, кнопка «Использовать Telegram» — имя из профиля и @username.
+  assertEquals(o.result.reply.screen, { screen: "ask_name", withContact: true, telegram: { name: "Анна", username: "anna_k" } });
 });
 
-Deno.test("всё обязательное есть → комментарий не спрашиваем, сразу сводка", () => {
-  const o = applyBookingDraft(null, { date: "2026-10-14", time: "19", guests: "2", name: "Анна", contact: "+30 690 123 4567" }, env());
+Deno.test("всё обязательное есть → сразу сводка с «Что-нибудь ещё?», пожелание из фразы сохраняется", () => {
+  const o = applyBookingDraft(
+    null,
+    { date: "2026-10-14", time: "19", guests: "2", name: "Анна", contact: "+30 690 123 4567", comment: "у окна" },
+    env(),
+  );
   const s = o.result.state as BookingState;
   assertEquals(s.step, "confirm");
-  assertEquals(s.data.comment, null);
+  assertEquals(s.data.comment, "у окна");
+  assert(o.result.reply.screen.screen === "confirm" && o.result.reply.screen.askMore === true);
   assertEquals(s.data.contact, "+306901234567");
   assertEquals(o.missing, []);
   assertEquals(o.result.reply.screen.screen, "confirm");
@@ -65,16 +71,22 @@ Deno.test("дополняет черновик, начатый кнопками,
   const s = o.result.state as BookingState;
   assertEquals(s.draftId, started.draftId);
   assertEquals(s.step, "guests");
-  assertEquals(s.data, { date: "2026-10-20", period: "dinner", time: "20:00", comment: null });
+  assertEquals(s.data, { date: "2026-10-20", period: "dinner", time: "20:00" });
 });
 
-Deno.test("после черновика имя и контакт идут обычными шагами, комментарий пропускается", () => {
+Deno.test("после черновика имя и телефон одним сообщением → сразу сводка", () => {
   const drafted = applyBookingDraft(null, { date: "2026-10-14", time: "19:00", guests: 4 }, env()).result.state as BookingState;
-  const named = advanceBooking(drafted, { type: "text", text: "Анна" }, env()).state as BookingState;
-  assertEquals(named.step, "contact");
-  const r = advanceBooking(named, { type: "action", action: "me" }, env());
+  const r = advanceBooking(drafted, { type: "text", text: "Анна, +30 690 123 4567" }, env());
   assertEquals(r.state.step, "confirm");
-  assertEquals((r.state as BookingState).data.contact, "@anna_k");
+  assertEquals((r.state as BookingState).data.name, "Анна");
+  assertEquals((r.state as BookingState).data.contact, "+306901234567");
+});
+
+Deno.test("агент дал контакт без имени → шаг имени без кнопки Telegram, затем сводка", () => {
+  const o = applyBookingDraft(null, { date: "2026-10-14", time: "19:00", guests: 4, contact: "@petr_k" }, env());
+  assertEquals(o.result.reply.screen, { screen: "ask_name", withContact: false, telegram: null });
+  const r = advanceBooking(o.result.state as BookingState, { type: "text", text: "Пётр" }, env());
+  assertEquals(r.state.step, "confirm");
 });
 
 Deno.test("ошибки полей: принятое пишется, непринятое — в errors со свободными часами", () => {
@@ -82,7 +94,7 @@ Deno.test("ошибки полей: принятое пишется, непри�
   const o = applyBookingDraft(null, { date: "2026-10-13", time: "14:00", guests: 30, name: "Анна" }, env());
   const s = o.result.state as BookingState;
   assertEquals(o.errors, { time: "too_soon", guests: "guests_too_many" });
-  assertEquals(s.data, { date: "2026-10-13", name: "Анна", comment: null });
+  assertEquals(s.data, { date: "2026-10-13", name: "Анна" });
   assertEquals(s.step, "period");
   assert(o.freeHours?.[0] === "16:00", `первый свободный час сегодня — 16:00 (15:00 + 30 мин), а не ${o.freeHours?.[0]}`);
 });

@@ -1,7 +1,8 @@
 // Черновик брони от агента (S09, сессия 3). Агент разобрал фразу гостя («стол на завтра в 19 на четверых») и передал
 // поля; здесь они проверяются теми же правилами, что ручной ввод, и ложатся в ТОТ ЖЕ BookingState, что у кнопочного
 // сценария S03 (§4.7). Шаг ставится на первое незаполненное поле: следующий ответ гостя («Анна») обработает обычный
-// шаг сценария, без LLM. Заявку не создаёт — только кнопка гостя «Отправить».
+// шаг сценария, без LLM. Пожелания (comment) — если гость их назвал; в конце сводка всё равно спросит «Что-нибудь ещё?».
+// Заявку не создаёт — только кнопка гостя «Отправить».
 // Чистая функция: БД, Telegram и LLM не знает.
 import {
   availableHours,
@@ -15,9 +16,9 @@ import {
   todayIn,
   validateSlot,
 } from "./bookingRules.ts";
-import { bookingScreen, startBooking } from "./bookingFlow.ts";
+import { bookingScreen, firstMissingStep, startBooking } from "./bookingFlow.ts";
 import { validateComment, validateContact, validateGuests, validateName } from "./fieldValidation.ts";
-import type { BookingData, BookingState, BookingStep, DraftError, DraftOutcome, FlowEnv, FlowState } from "./flowState.ts";
+import type { BookingData, BookingState, DraftError, DraftOutcome, FlowEnv, FlowState } from "./flowState.ts";
 import { diffDays, isValidDateString } from "./zonedTime.ts";
 
 /** Поля, которые агент может передать. Дата — YYYY-MM-DD в зоне ресторана, время — целый час «19:00». */
@@ -67,31 +68,6 @@ function dateError(date: string, be: BookingEnv): SlotError | null {
 /** Все свободные для брони часы даты, по возрастанию. */
 export function freeHoursOn(date: string, be: BookingEnv): string[] {
   return PERIOD_IDS.flatMap((p) => availableHours(date, p, be)).sort((a, b) => a - b).map(hhmm);
-}
-
-const FULL_ORDER: BookingStep[] = ["date", "period", "hour", "guests", "name", "contact", "comment", "confirm"];
-/** При изменении брони имя, контакт и комментарий не спрашиваем — как в bookingFlow.ts. */
-const CHANGE_ORDER: BookingStep[] = ["date", "period", "hour", "guests", "confirm"];
-
-function isFilled(step: BookingStep, d: BookingData): boolean {
-  switch (step) {
-    case "date":
-      return !!d.date;
-    case "period":
-      return !!d.period;
-    case "hour":
-      return !!d.time;
-    case "guests":
-      return d.guests !== undefined;
-    case "name":
-      return !!d.name;
-    case "contact":
-      return !!d.contact;
-    case "comment":
-      return d.comment !== undefined;
-    case "confirm":
-      return false;
-  }
 }
 
 /**
@@ -170,14 +146,8 @@ export function applyBookingDraft(current: FlowState | null, input: BookingDraft
     } else errors[field] = v.error;
   }
 
-  const order = isChange ? CHANGE_ORDER : FULL_ORDER;
-  // Комментарий в диалоге не спрашиваем (§5 п.5: «только недостающее»): гость его не назвал — null. Шаг контакта
-  // кнопочного сценария увидит решённый комментарий и сразу перейдёт к сводке. Добавить его можно и позже:
-  // агент передаст comment, черновик дополнится.
-  if (!isChange && data.comment === undefined) data.comment = null;
-  const step = order.find((s) => !isFilled(s, data)) ?? "confirm";
-
-  const state: BookingState = { ...base, step, data, touchedAt: env.now.toISOString() };
+  const filled: BookingState = { ...base, data, touchedAt: env.now.toISOString() };
+  const state: BookingState = { ...filled, step: firstMissingStep(filled) };
   const missing: BookingDraftField[] = [];
   if (!data.date) missing.push("date");
   if (!data.time) missing.push("time");

@@ -11,6 +11,7 @@ const env = (over: Partial<FlowEnv> = {}): FlowEnv => ({
   timeZone: "Europe/Athens",
   openingHours: HOURS,
   username: "anna_k",
+  firstName: "Анна",
   newDraftId: () => "11111111-2222-3333-4444-555555555555",
   ...over,
 });
@@ -32,9 +33,9 @@ Deno.test("счастливый путь до сводки и подтвержд
     text("4"),
     text("Анна"),
     act("me"),
-    act("skip"),
   ]);
   assertEquals(r.state.step, "confirm");
+  // Пожеланий нет — поля нет: отдельного шага комментария больше нет, его пишут на сводке.
   assertEquals((r.state as BookingState).data, {
     date: "2026-10-20",
     period: "dinner",
@@ -42,9 +43,8 @@ Deno.test("счастливый путь до сводки и подтвержд
     guests: 4,
     name: "Анна",
     contact: "@anna_k",
-    comment: null, // «Пропустить» = null, не пустая строка
   });
-  assertEquals(r.reply.screen.screen, "confirm");
+  assert(r.reply.screen.screen === "confirm" && r.reply.screen.askMore === true);
 
   const sent = advanceBooking(r.state as BookingState, act("send"), env());
   assertEquals(sent.reply.screen, { screen: "submit" });
@@ -163,12 +163,12 @@ Deno.test("«Назад»: с часов обратно к периодам, в�
   assertEquals(dinner.reply.screen, { screen: "ask_hour", date: "2026-10-20", period: "dinner", hours: [17, 18, 19, 20, 21, 22] });
 });
 
-Deno.test("«Назад» со сводки стирает комментарий; на первом шаге назад некуда", () => {
-  const atConfirm = run(startBooking(env()), [...toGuests, text("4"), text("Анна"), act("me"), act("skip")]);
+Deno.test("«Назад» со сводки — к контакту, пожелание остаётся; на первом шаге назад некуда", () => {
+  const atConfirm = run(startBooking(env()), [...toGuests, text("4"), text("Анна"), act("me"), text("у окна")]);
   const back = advanceBooking(atConfirm.state as BookingState, act("back"), env());
-  assertEquals(back.state.step, "comment");
-  assertEquals((back.state as BookingState).data.comment, undefined);
-  assertEquals((back.state as BookingState).data.contact, "@anna_k");
+  assertEquals(back.state.step, "contact");
+  assertEquals((back.state as BookingState).data.contact, undefined);
+  assertEquals((back.state as BookingState).data.comment, "у окна");
 
   const first = advanceBooking(startBooking(env()).state as BookingState, act("back"), env());
   assertEquals(first.state.step, "date");
@@ -226,4 +226,40 @@ Deno.test("шаг «имя»: вопрос вместо имени не прин
   const r = run(startBooking(env()), [...toGuests, text("4"), text("а детские стулья есть?")]);
   assertEquals(r.state.step, "name");
   assertEquals(r.reply.error, "name_unlikely");
+});
+
+Deno.test("сводка «Что-нибудь ещё?»: текст дописывается в пожелания, вопрос — нет", () => {
+  const atConfirm = run(startBooking(env()), [...toGuests, text("4"), text("Анна"), act("me")]);
+  let r = advanceBooking(atConfirm.state as BookingState, text("у окна"), env());
+  assertEquals(r.state.step, "confirm");
+  r = advanceBooking(r.state as BookingState, text("детский стул"), env());
+  assertEquals((r.state as BookingState).data.comment, "у окна; детский стул");
+  assert(r.reply.screen.screen === "confirm" && r.reply.screen.summary.includes("у окна; детский стул"));
+
+  const question = advanceBooking(r.state as BookingState, text("а парковка есть?"), env());
+  assertEquals(question.reply.error, "comment_unlikely");
+  assertEquals((question.state as BookingState).data.comment, "у окна; детский стул");
+});
+
+Deno.test("шаг имени: имя с телефоном одним сообщением, кнопка Telegram, только телефон", () => {
+  const atName = run(startBooking(env()), [...toGuests, text("4")]);
+  assertEquals(atName.reply.screen, { screen: "ask_name", withContact: true, telegram: { name: "Анна", username: "anna_k" } });
+
+  const both = advanceBooking(atName.state as BookingState, text("Пётр +30 690 123 4567"), env());
+  assertEquals(both.state.step, "confirm");
+  assertEquals([(both.state as BookingState).data.name, (both.state as BookingState).data.contact], ["Пётр", "+306901234567"]);
+
+  const tg = advanceBooking(atName.state as BookingState, act("tg"), env());
+  assertEquals(tg.state.step, "confirm");
+  assertEquals([(tg.state as BookingState).data.name, (tg.state as BookingState).data.contact], ["Анна", "@anna_k"]);
+
+  // Имя в профиле — эмодзи и ник: кнопка даёт только контакт, имя спрашивается дальше.
+  const emoji = advanceBooking(atName.state as BookingState, act("tg"), env({ firstName: "🦊 xX_fox_Xx 2000" }));
+  assertEquals(emoji.state.step, "name");
+  assertEquals((emoji.state as BookingState).data.contact, "@anna_k");
+
+  // Только телефон — контакт принят, имя спрашивается снова (без «Использовать Telegram»: контакт уже есть).
+  const phoneOnly = advanceBooking(atName.state as BookingState, text("+30 690 123 4567"), env());
+  assertEquals(phoneOnly.state.step, "name");
+  assertEquals(phoneOnly.reply.screen, { screen: "ask_name", withContact: false, telegram: null });
 });

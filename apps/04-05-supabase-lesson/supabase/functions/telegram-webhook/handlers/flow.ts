@@ -15,7 +15,7 @@ import type { FlowInput, FlowReply, FlowState } from "../../_shared/domain/flowS
 import { getAiSettings } from "../../_shared/services/aiSettings.ts";
 import { cancelFlow, continueFlow, isDraftSubmitted, startFlow, submitFlow } from "../../_shared/services/flow.ts";
 import { notifyManager } from "../../_shared/services/managerNotification.ts";
-import type { HandlerContext } from "../context.ts";
+import { guestOf, type HandlerContext } from "../context.ts";
 import { handleAiOnStep } from "./ai.ts";
 import { reply, replyNav } from "../logging.ts";
 
@@ -30,7 +30,7 @@ export async function showFlowScreen(ctx: HandlerContext, draftId: string, flowR
 
 /** «📅 Забронировать» и «💬 Связаться с менеджером»: новый сценарий вместо прежнего. */
 export async function handleFlowStart(ctx: HandlerContext, flow: FlowState["flow"]): Promise<void> {
-  const { state, reply: flowReply } = await startFlow(ctx.client, ctx.conversation.id, flow, ctx.username);
+  const { state, reply: flowReply } = await startFlow(ctx.client, ctx.conversation.id, flow, guestOf(ctx));
   await showFlowScreen(ctx, state.draftId, flowReply);
 }
 
@@ -71,7 +71,7 @@ export async function handleFlowAction(ctx: HandlerContext, state: FlowState, ac
 }
 
 async function advance(ctx: HandlerContext, state: FlowState, input: FlowInput): Promise<void> {
-  const result = await continueFlow(ctx.client, ctx.conversation.id, state, input, ctx.username);
+  const result = await continueFlow(ctx.client, ctx.conversation.id, state, input, guestOf(ctx));
   if (result.reply.screen.screen === "submit") {
     await submit(ctx, result.state);
     return;

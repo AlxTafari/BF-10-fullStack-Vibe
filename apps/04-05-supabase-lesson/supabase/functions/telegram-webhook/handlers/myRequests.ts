@@ -15,7 +15,7 @@ import { formatBookingCard } from "../../_shared/domain/myRequests.ts";
 import { startChangeFlow } from "../../_shared/services/flow.ts";
 import { notifyManager } from "../../_shared/services/managerNotification.ts";
 import { cancelMyBooking, getMyBooking, listMyRequests } from "../../_shared/services/myRequests.ts";
-import type { HandlerContext } from "../context.ts";
+import { guestOf, type HandlerContext } from "../context.ts";
 import { showFlowScreen } from "./flow.ts";
 import { reply } from "../logging.ts";
 
@@ -78,7 +78,7 @@ export async function handleBookingAction(ctx: HandlerContext, bookingId: string
     }
 
     case "ch": {
-      const started = await startChangeFlow(ctx.client, ctx.conversation.id, bookingId, ctx.username);
+      const started = await startChangeFlow(ctx.client, ctx.conversation.id, bookingId, guestOf(ctx));
       if (!started) {
         await reply(ctx, CHANGE_NOT_POSSIBLE, MY_LIST_AND_HOME_KEYBOARD);
         return;

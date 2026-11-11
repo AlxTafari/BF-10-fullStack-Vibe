@@ -8,6 +8,7 @@ export type FieldError =
   | "name_too_short"
   | "name_too_long"
   | "name_unlikely"
+  | "comment_unlikely"
   | "contact_invalid"
   | "comment_too_long"
   | "text_empty"
@@ -51,6 +52,25 @@ export function looksLikeName(input: string): boolean {
   const name = input.trim();
   if (/[?¿？\d]/.test(name)) return false;
   return name.split(/\s+/).length <= NAME_MAX_WORDS;
+}
+
+/**
+ * Имя и контакт одним сообщением: «Анна +30 690 123 4567», «Анна, @anna_k». Контакт — последний телефон или
+ * @username в тексте, остальное — имя. null — контакта в тексте нет или остаток не похож на имя.
+ * name: null — в тексте только контакт.
+ */
+export function splitNameAndContact(input: string): { name: string | null; contact: string } | null {
+  const text = input.trim();
+  // @username или телефон: «+», цифры, пробелы, скобки, дефисы; минимум 10 цифр проверит validateContact.
+  const match = /(@[A-Za-z0-9_]{5,32}|\+?[\d][\d\s()\-]{8,}\d)\s*$/.exec(text) ??
+    /^\s*(@[A-Za-z0-9_]{5,32}|\+?[\d][\d\s()\-]{8,}\d)/.exec(text);
+  if (!match) return null;
+  const contact = validateContact(match[1]);
+  if (!contact.ok) return null;
+  const rest = (text.slice(0, match.index) + text.slice(match.index + match[0].length)).replace(/^[\s,;:—-]+|[\s,;:—-]+$/g, "");
+  if (!rest) return { name: null, contact: contact.value };
+  const name = validateName(rest);
+  return name.ok && looksLikeName(name.value) ? { name: name.value, contact: contact.value } : null;
 }
 
 /** Телефон (10–15 цифр) или @username (5–32 символа). Телефон нормализуем: «+», затем цифры. */

@@ -201,15 +201,22 @@ Deno.test({
       const { data: before } = await client.from("booking_requests").select("id").eq("conversation_id", await s.guest.conversationId());
       assertEquals(before, [], "черновик заявку не создаёт");
 
-      // Имя и контакт — обычные шаги, без модели; комментарий не спрашивается — сразу карточка.
-      await s.guest.text("Анна");
-      await s.guest.text("+302310000000");
+      // Имя и телефон одним сообщением — обычный шаг, без модели; дальше карточка с «Что-нибудь ещё?».
+      await s.guest.text("Анна +302310000000");
       assert(s.guest.screen().text.startsWith("Проверьте заявку"), s.guest.screen().text);
+      assert(s.guest.screen().text.includes("Что-нибудь ещё?"));
+      // Ответ текстом на карточке — пожелание, карточка рисуется заново.
+      await s.guest.text("у окна");
+      assert(s.guest.screen().text.includes("Пожелания: у окна"), s.guest.screen().text);
       await s.guest.tapWhere(hasAction("send"));
 
       const { data: rows } = await client.from("booking_requests").select("guests_count, guest_name, contact, comment")
         .eq("conversation_id", await s.guest.conversationId());
-      assertEquals(rows, [{ guests_count: 4, guest_name: "Анна", contact: "+302310000000", comment: null }]);
+      assertEquals(rows, [{ guests_count: 4, guest_name: "Анна", contact: "+302310000000", comment: "у окна" }]);
+      // BUG-002: вопросы бота остаются в истории, кнопки есть только у последнего сообщения.
+      const history = s.guest.messages();
+      assert(history.some((m) => m.text === "Отлично! На чьё имя оформить и как с вами связаться?"), "вопрос агента не удалён");
+      assertEquals(history.slice(0, -1).filter((m) => m.keyboard.flat().some((b) => b.callback_data.startsWith("flow:"))), []);
       assertEquals(s.llm.remaining(), 0);
       // Ответ агента посчитан в лимит и журнал, как любой AI-ответ.
       const ai = (await journal(s)).filter((r) => (r.meta as { ai?: boolean } | null)?.ai);

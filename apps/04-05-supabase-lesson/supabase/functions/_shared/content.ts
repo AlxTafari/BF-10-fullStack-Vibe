@@ -170,6 +170,7 @@ const FLOW_ERROR_TEXT: Record<FlowErrorCode, string> = {
   name_too_short: "Имя слишком короткое — минимум 2 символа.",
   name_too_long: "Имя слишком длинное — до 60 символов.",
   name_unlikely: "Не похоже на имя. Напишите, на чьё имя оформить заявку.",
+  comment_unlikely: "Похоже на вопрос — здесь на него не ответить. Пожелание напишите без вопроса или отправьте заявку кнопкой.",
   contact_invalid: "Не похоже на контакт. Напишите телефон (10–15 цифр) или @username.",
   comment_too_long: `Комментарий слишком длинный — до ${COMMENT_MAX} символов.`,
   text_empty: "Сообщение пустое. Напишите текст.",
@@ -247,10 +248,16 @@ export function renderFlowReply(draftId: string, reply: FlowReply): { text: stri
       text = `Для компании больше ${GUESTS_MAX} человек бронь через бота не оформить — оставьте запрос менеджеру.`;
       keyboard = [[btn("💬 Связаться с менеджером", "to_manager")], cancel];
       break;
-    case "ask_name":
-      text = "На чьё имя оформить заявку?";
-      keyboard = [cancel];
+    case "ask_name": {
+      text = screen.withContact
+        ? "На чьё имя оформить заявку? Можно сразу с телефоном или @username."
+        : "На чьё имя оформить заявку?";
+      const tg = screen.telegram;
+      // Одним нажатием: имя из профиля Telegram и @username. Имя в профиле не годится — только контакт.
+      const tgLabel = tg && (tg.name ? `Использовать Telegram: ${tg.name}, @${tg.username}` : `Использовать мой @${tg.username}`);
+      keyboard = [...(tgLabel ? [[btn(tgLabel, "tg")]] : []), cancel];
       break;
+    }
     case "ask_contact": {
       text = screen.optional
         ? "Если хотите получить ответ — оставьте телефон или @username. Можно пропустить."
@@ -261,10 +268,6 @@ export function renderFlowReply(draftId: string, reply: FlowReply): { text: stri
       keyboard = [...row.map((b) => [b]), cancel];
       break;
     }
-    case "ask_comment":
-      text = `Пожелания к заявке (например, детский стул или стол у окна)? Напишите текст до ${COMMENT_MAX} символов или пропустите.`;
-      keyboard = [[btn("Пропустить", "skip")], cancel];
-      break;
     case "ask_kind":
       text = "Что вы хотите отправить?";
       keyboard = [
@@ -284,7 +287,13 @@ export function renderFlowReply(draftId: string, reply: FlowReply): { text: stri
         : screen.flow === "booking"
         ? `Проверьте заявку:\n\n${screen.summary}\n\nЭто заявка, а не подтверждённая бронь. Менеджер рассмотрит её и ответит вам.`
         : `Проверьте обращение:\n\n${screen.summary}`;
-      keyboard = [[btn("✅ Отправить", "send")], [btn("🔄 Начать заново", "restart")], cancel];
+      // «Что-нибудь ещё?» вместо отдельного шага пожеланий: ответ текстом дописывается к заявке, кнопка — отправка.
+      if (screen.askMore) text += "\n\nЧто-нибудь ещё? Например, детский стул или стол у окна — напишите, добавлю к заявке.";
+      keyboard = [
+        [btn(screen.askMore ? "✅ Нет, отправить заявку" : "✅ Отправить", "send")],
+        [btn("🔄 Начать заново", "restart")],
+        cancel,
+      ];
       break;
     case "submit":
       // Экран-сигнал для вызывающего: показывать нечего, заявку создаёт обработчик.

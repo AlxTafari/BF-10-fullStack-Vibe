@@ -3,7 +3,7 @@ import type { AiSettings } from "../../_shared/domain/aiSettings.ts";
 import type { AdvanceResult, FlowReply } from "../../_shared/domain/flowState.ts";
 import { type AgentTurnResult, runAgentTurn } from "../../_shared/services/ai/agent.ts";
 import type { MessageMeta } from "../../_shared/types.ts";
-import type { HandlerContext } from "../context.ts";
+import { guestOf, type HandlerContext } from "../context.ts";
 import { reply, replyNav } from "../logging.ts";
 
 /** Индикатор «печатает…» живёт ~5 с — пока агент думает, обновляем его чуть чаще. */
@@ -48,7 +48,7 @@ async function runTurn(ctx: HandlerContext, settings: AiSettings): Promise<Agent
   try {
     return await runAgentTurn(
       { client: ctx.client, llm: ctx.llm },
-      { conversation: ctx.conversation, settings, username: ctx.username },
+      { conversation: ctx.conversation, settings, guest: guestOf(ctx) },
     );
   } finally {
     stopTyping();

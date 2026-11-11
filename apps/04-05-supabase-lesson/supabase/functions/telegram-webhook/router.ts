@@ -82,6 +82,7 @@ async function buildContext(
     tg: deps.tg,
     chatId,
     username: from.username ?? null,
+    firstName: from.first_name || null,
     conversation,
     isPrivate: chatType === "private",
     callbackMessageId,

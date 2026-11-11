@@ -7,6 +7,7 @@ const env = (over: Partial<FlowEnv> = {}): FlowEnv => ({
   timeZone: "Europe/Athens",
   openingHours: null,
   username: "anna_k",
+  firstName: "Анна",
   newDraftId: () => "11111111-2222-3333-4444-555555555555",
   ...over,
 });
