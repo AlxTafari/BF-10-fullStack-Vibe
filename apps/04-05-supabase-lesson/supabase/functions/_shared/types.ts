@@ -7,6 +7,16 @@ export type MessageDirection = "in" | "out";
  */
 export type MessageKind = "text" | "button" | "search";
 
+/**
+ * Служебная пометка сообщения (messages.meta, S09). null — обычное сообщение.
+ * - ai — ответ агента: модель и какие tools он вызвал за ход (видно в админке, по ним же суточный лимит);
+ * - aiFallback — агент не ответил (ошибка, таймаут, лимит), гость получил запасной ответ с кнопками.
+ *   Ходом агента не считается: в лимит не идёт.
+ */
+export type MessageMeta =
+  | { ai: true; model: string; tools: string[] }
+  | { aiFallback: "error" | "timeout" | "quota" | "limit" };
+
 export interface RestaurantRow {
   id: string;
   name: string;

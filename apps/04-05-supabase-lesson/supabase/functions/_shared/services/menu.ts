@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { type AllergenCode, partitionByAllergens } from "../domain/allergens.ts";
 import type { DishCardData } from "../domain/formatDishCard.ts";
 import { normalizeSearchQuery, toLikePattern } from "../domain/searchQuery.ts";
 import { getPublishedItem, listCategoriesWithPublishedItems, listPublishedItems } from "../repositories/menuRepo.ts";
@@ -9,6 +10,8 @@ import type { MenuCategoryRow } from "../types.ts";
 export const SEARCH_LIMIT = 8;
 /** Блюда одной категории: больше 10 кнопок в чате уже неудобно; превышение — подсказка про поиск. */
 export const CATEGORY_ITEMS_LIMIT = 10;
+/** Подбор по аллергенам просматривает меню целиком; предел — страховка от гигантского меню, не пагинация. */
+export const ALLERGEN_SCAN_LIMIT = 300;
 
 export interface DishSummary {
   id: string;
@@ -83,4 +86,47 @@ export async function getDishDetails(client: SupabaseClient, input: { dishId: st
   if (!item) return null;
   const { category_id, category_name, id: _id, ...card } = item;
   return { card: { ...card, currency: restaurant.currency }, categoryId: category_id, categoryName: category_name };
+}
+
+export interface AllergenFilterResult {
+  /** Состав указан, названных аллергенов нет. */
+  free: DishSummary[];
+  /** Содержит хотя бы один из названных. */
+  contains: DishSummary[];
+  /** Состав не указан — безопасным не называем. */
+  unknown: DishSummary[];
+  /** Меню больше ALLERGEN_SCAN_LIMIT: просмотрено не всё. */
+  truncated: boolean;
+}
+
+/**
+ * Опубликованные блюда (всего меню или категории), поделённые по аллергенам гостя (S09). Деление —
+ * детерминированное, в domain; AI только пересказывает группы. Сервис ядра: про AI не знает, недоступные
+ * сейчас блюда возвращает с isAvailable = false, как searchMenu.
+ */
+export async function filterMenuByAllergens(
+  client: SupabaseClient,
+  input: { allergens: AllergenCode[]; categoryId?: string },
+): Promise<AllergenFilterResult> {
+  const restaurant = await getRestaurant(client);
+  if (!restaurant) return { free: [], contains: [], unknown: [], truncated: false };
+  const rows = await listPublishedItems(client, restaurant.id, {
+    categoryId: input.categoryId,
+    limit: ALLERGEN_SCAN_LIMIT + 1,
+  });
+  const scanned = rows.slice(0, ALLERGEN_SCAN_LIMIT);
+  const groups = partitionByAllergens(scanned, input.allergens);
+  const toSummary = (r: (typeof scanned)[number]): DishSummary => ({
+    id: r.id,
+    name: r.name,
+    price: r.price,
+    currency: restaurant.currency,
+    isAvailable: r.is_available,
+  });
+  return {
+    free: groups.free.map(toSummary),
+    contains: groups.contains.map(toSummary),
+    unknown: groups.unknown.map(toSummary),
+    truncated: rows.length > ALLERGEN_SCAN_LIMIT,
+  };
 }
