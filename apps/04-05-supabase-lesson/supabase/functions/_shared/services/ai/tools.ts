@@ -1,6 +1,7 @@
 // Реестр tools агента (S09): имя → схема для модели + вызов сервиса ядра (ADR-004: сервисы про AI не знают,
-// адаптер — здесь). Все tools только читают; reply — финальный ответ, не данные. Создание брони и обращения —
-// кнопкой гостя (сессия 3).
+// адаптер — здесь). Tools читают данные; draftBooking и draftGuestRequest пишут только черновик сценария
+// (conversations.state) — то же, что гость может сделать кнопками. Создание брони и обращения — только кнопкой гостя
+// «Отправить» под карточкой; reply — финальный ответ, не данные.
 //
 // Аргументы приходят от модели, а значит, косвенно от гостя: проверяем каждый, как ввод пользователя.
 // Ответы tools — только гостевые данные; блюда в стоп-листе (is_available = false) агенту не отдаются вовсе
@@ -10,15 +11,43 @@ import { EU_ALLERGEN_CODES, isAllergenCode } from "../../domain/allergens.ts";
 import { SUGGESTION_KINDS } from "../../domain/aiSuggestions.ts";
 import { formatLocalDateTime } from "../../domain/zonedTime.ts";
 import type { LlmToolCall, LlmToolSchema } from "../../llm/types.ts";
+import type { BookingDraftInput } from "../../domain/bookingDraft.ts";
+import { type AdvanceResult, type FlowState, GUEST_REQUEST_KINDS } from "../../domain/flowState.ts";
+import { isContactRequired } from "../../domain/guestRequestFlow.ts";
 import { getFaqAnswer, listFaq } from "../faq.ts";
+import { draftBookingFromAgent, draftGuestRequestFromAgent } from "../flow.ts";
 import { type DishSummary, filterMenuByAllergens, getDishDetails, listMenuCategories, searchMenu } from "../menu.ts";
 import { getMyBooking, listMyRequests } from "../myRequests.ts";
 import { getRestaurantInfo } from "../restaurantInfo.ts";
+
+/**
+ * Сценарий диалога внутри хода. state — живой черновик (вначале — из conversations.state), draft tools его
+ * обновляют; changed — последний результат draft за ход: обработчик покажет под ответом кнопки этого шага.
+ */
+export interface FlowHolder {
+  state: FlowState | null;
+  changed: AdvanceResult | null;
+  /**
+   * Очередь draft-вызовов: агент выполняет вызовы раунда параллельно, а два draft одного раунда читают и пишут один
+   * черновик — второй затёр бы поля первого. Через очередь каждый видит результат предыдущего.
+   */
+  queue: Promise<unknown>;
+}
+
+/** Выполняет fn после предыдущих draft-вызовов хода. Сбой одного не останавливает очередь. */
+function inDraftQueue<T>(flow: FlowHolder, fn: () => Promise<T>): Promise<T> {
+  const run = flow.queue.then(fn);
+  flow.queue = run.catch(() => {});
+  return run;
+}
 
 export interface ToolContext {
   client: SupabaseClient;
   conversationId: string;
   now: Date;
+  /** @username гостя без @: для кнопки «Использовать мой @username» на шаге контакта. */
+  username: string | null;
+  flow: FlowHolder;
 }
 
 type ToolResult = Record<string, unknown>;
@@ -51,6 +80,19 @@ function idArg(args: Record<string, unknown>, key: string): string | undefined {
 }
 
 const invalid = (what: string): ToolResult => ({ error: "invalid_arguments", details: what });
+
+/**
+ * Строка для черновика: без обрезки по длине — слишком длинное имя или текст должен отклонить валидатор поля
+ * с понятной ошибкой (name_too_long), а не молча пропасть. Предел — только от мусора огромного размера.
+ */
+function draftString(args: Record<string, unknown>, key: string): string | undefined {
+  const value = args[key];
+  return typeof value === "string" ? value.slice(0, 5000) : undefined;
+}
+
+/** Что увидит гость под ответом: агенту — чтобы не обещал лишнего и не дублировал кнопки текстом. */
+const guestSees = (ready: boolean) =>
+  ready ? "summary card with a Send button: ask the guest to check it and press Send" : "buttons of the current step";
 
 /** Блюдо для модели: id нужен ей для getDishDetails и кнопки «Карточка блюда», гостю она его не показывает. */
 const dishForModel = (d: DishSummary) => ({ id: d.id, name: d.name, price: d.price, currency: d.currency });
@@ -230,6 +272,91 @@ const TOOLS: ToolDefinition[] = [
         hasPendingChange: details.pendingChange !== null,
         canCancel: details.canCancel,
         canChange: details.canChange,
+      };
+    },
+  },
+  {
+    schema: {
+      name: "draftBooking",
+      description:
+        "Fill the table booking draft with what the guest said. It does NOT create a booking: when the draft is complete the " +
+        "guest sees a summary card and sends it with a button. Pass only values the guest actually gave in this conversation; " +
+        "never invent a name or a phone. Call it again to add or correct fields. Result: accepted, errors per field, missing " +
+        "(ask the guest only for these), freeHours when the time was rejected.",
+      parameters: {
+        type: "object",
+        properties: {
+          date: { type: "string", description: "YYYY-MM-DD; resolve 'tomorrow', 'on Friday' from the current local date" },
+          time: { type: "string", description: "HH:00, whole hours only, 24h: 'at 7 pm' = 19:00" },
+          guests: { type: "integer", description: "number of guests" },
+          name: { type: "string", description: "name for the booking" },
+          contact: { type: "string", description: "phone number or Telegram @username" },
+          comment: { type: "string", description: "wishes: high chair, window table, occasion" },
+        },
+      },
+    },
+    async run(ctx, args) {
+      const input: BookingDraftInput = {
+        date: draftString(args, "date"),
+        time: draftString(args, "time"),
+        guests: typeof args.guests === "number" || typeof args.guests === "string" ? args.guests : undefined,
+        name: draftString(args, "name"),
+        contact: draftString(args, "contact"),
+        comment: draftString(args, "comment"),
+      };
+      const o = await inDraftQueue(ctx.flow, async () => {
+        const outcome = await draftBookingFromAgent(ctx.client, ctx.conversationId, ctx.flow.state, input, ctx.username);
+        ctx.flow.state = outcome.result.state;
+        ctx.flow.changed = outcome.result;
+        return outcome;
+      });
+      const ready = o.result.state.step === "confirm";
+      return {
+        draft: o.result.state.data,
+        accepted: o.accepted,
+        errors: o.errors,
+        missing: o.missing,
+        ...(o.freeHours ? { freeHours: o.freeHours } : {}),
+        ready,
+        guestSees: guestSees(ready),
+      };
+    },
+  },
+  {
+    schema: {
+      name: "draftGuestRequest",
+      description:
+        "Prepare a message to the restaurant manager: when the guest asks for a human or the manager, complains, leaves " +
+        "feedback, or asks something your tools have no data for. It does NOT send anything: the guest sends it with a button. " +
+        "text: the guest's request in their words (a short faithful summary is fine, keep the facts). contact is required for " +
+        "manager_request; for feedback and complaint the guest may skip it with a button.",
+      parameters: {
+        type: "object",
+        properties: {
+          kind: { type: "string", enum: [...GUEST_REQUEST_KINDS], description: "manager_request = question or call the manager" },
+          text: { type: "string", description: "the request text, in the guest's language" },
+          contact: { type: "string", description: "phone number or Telegram @username, only if the guest gave it" },
+        },
+      },
+    },
+    async run(ctx, args) {
+      const input = { kind: draftString(args, "kind"), text: draftString(args, "text"), contact: draftString(args, "contact") };
+      const o = await inDraftQueue(ctx.flow, async () => {
+        const outcome = await draftGuestRequestFromAgent(ctx.client, ctx.conversationId, ctx.flow.state, input, ctx.username);
+        ctx.flow.state = outcome.result.state;
+        ctx.flow.changed = outcome.result;
+        return outcome;
+      });
+      const state = o.result.state;
+      const ready = state.step === "confirm";
+      return {
+        draft: state.data,
+        accepted: o.accepted,
+        errors: o.errors,
+        missing: o.missing,
+        contactOptional: state.flow === "guest_request" && !!state.data.kind && !isContactRequired(state.data.kind),
+        ready,
+        guestSees: guestSees(ready),
       };
     },
   },

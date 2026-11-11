@@ -45,6 +45,7 @@ async function bestEffort(what: string, action: () => Promise<unknown>): Promise
  * domain/navigation.ts: править на месте (только «Меню блюд»), удалить точный дубль в окне или просто отправить.
  * В группах работает как reply(): удалять и править там бот не должен.
  * redraw — итог сценария: новое сообщение внизу вместо правки сводки выше (см. decideNav).
+ * meta — пометка ответа агента (S09): его ответ на шаге сценария идёт как экран сценария, с кнопками шага.
  */
 export async function replyNav(
   ctx: HandlerContext,
@@ -52,8 +53,9 @@ export async function replyNav(
   text: string,
   keyboard?: InlineKeyboard,
   redraw = false,
+  meta?: MessageMeta,
 ): Promise<void> {
-  if (!ctx.isPrivate) return reply(ctx, text, keyboard);
+  if (!ctx.isPrivate) return reply(ctx, text, keyboard, "text", meta);
 
   const last = parseLastNav(ctx.conversation.last_nav);
   const decision = decideNav({ screen, callbackMessageId: ctx.callbackMessageId, last, now: new Date(), redraw });
@@ -69,7 +71,7 @@ export async function replyNav(
           screen,
           messageId: decision.messageId,
         }));
-      await recordMessage(ctx.client, ctx.conversation.id, "out", text);
+      await recordMessage(ctx.client, ctx.conversation.id, "out", text, "text", meta);
       return;
     } catch (error) {
       // Кнопка вела на тот же контент: успех, в журнал ничего не пишем (строки без изменения в чате не было).
@@ -77,11 +79,11 @@ export async function replyNav(
       // Сообщения уже нет или его нельзя править — гость всё равно должен получить экран: отправляем новое.
       if (!isMessageGoneError(error)) throw error;
     }
-    await sendNav(ctx, screen, text, keyboard, last?.messageId ?? null, null);
+    await sendNav(ctx, screen, text, keyboard, last?.messageId ?? null, null, meta);
     return;
   }
 
-  await sendNav(ctx, screen, text, keyboard, last?.messageId ?? null, decision.deleteId);
+  await sendNav(ctx, screen, text, keyboard, last?.messageId ?? null, decision.deleteId, meta);
 }
 
 /** Порядок «сначала отправить, потом удалить»: при сбое в худшем случае два одинаковых сообщения, а не ни одного. */
@@ -92,6 +94,7 @@ async function sendNav(
   keyboard: InlineKeyboard | undefined,
   expected: number | null,
   deleteId: number | null,
+  meta?: MessageMeta,
 ): Promise<void> {
   const messageId = await ctx.tg.sendMessage(ctx.chatId, text, keyboard);
 
@@ -115,7 +118,7 @@ async function sendNav(
   }
 
   // В журнал — всегда, включая дубли: он показывает всё, что бот отправил, а шум чистит ретеншн.
-  await recordMessage(ctx.client, ctx.conversation.id, "out", text);
+  await recordMessage(ctx.client, ctx.conversation.id, "out", text, "text", meta);
 }
 
 /**

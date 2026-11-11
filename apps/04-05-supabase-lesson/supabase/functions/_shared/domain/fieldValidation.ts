@@ -7,6 +7,7 @@ export type FieldError =
   | "guests_too_many"
   | "name_too_short"
   | "name_too_long"
+  | "name_unlikely"
   | "contact_invalid"
   | "comment_too_long"
   | "text_empty"
@@ -35,6 +36,21 @@ export function validateName(input: string): Validated<string> {
   if (name.length < NAME_MIN) return { ok: false, error: "name_too_short" };
   if (name.length > NAME_MAX) return { ok: false, error: "name_too_long" };
   return { ok: true, value: name };
+}
+
+/** Больше слов в имени не бывает: «Анна Мария Петрова-Смит» проходит, «а детские стулья у вас есть» — нет. */
+export const NAME_MAX_WORDS = 4;
+
+/**
+ * Похоже ли на имя (S09): только для шага «имя» в пошаговом сценарии. validateName пропускает любой текст 2–60 символов,
+ * и побочный вопрос посреди брони стал бы именем. Вопрос, цифры (телефон) или длинная фраза — не имя: при включённом AI
+ * такой текст уходит агенту, при выключенном — просьба написать имя. Сервис эту эвристику не применяет: имя от агента
+ * он уже извлёк из фразы.
+ */
+export function looksLikeName(input: string): boolean {
+  const name = input.trim();
+  if (/[?¿？\d]/.test(name)) return false;
+  return name.split(/\s+/).length <= NAME_MAX_WORDS;
 }
 
 /** Телефон (10–15 цифр) или @username (5–32 символа). Телефон нормализуем: «+», затем цифры. */

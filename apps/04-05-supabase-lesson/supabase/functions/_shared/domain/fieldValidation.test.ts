@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import {
+  looksLikeName,
   validateComment,
   validateContact,
   validateGuests,
@@ -48,4 +49,12 @@ Deno.test("текст обращения: 1–2000", () => {
   assertEquals(validateRequestText(" ok "), { ok: true, value: "ok" });
   assertEquals(validateRequestText("  "), { ok: false, error: "text_empty" });
   assertEquals(validateRequestText("а".repeat(2001)), { ok: false, error: "text_too_long" });
+});
+
+Deno.test("looksLikeName: имя — да, вопрос, телефон, длинная фраза — нет", () => {
+  assertEquals(looksLikeName("Анна"), true);
+  assertEquals(looksLikeName("Анна Мария Петрова-Смит"), true);
+  assertEquals(looksLikeName("а детские стулья есть?"), false);
+  assertEquals(looksLikeName("Иван +79991234567"), false);
+  assertEquals(looksLikeName("давай лучше в восемь вечера"), false);
 });

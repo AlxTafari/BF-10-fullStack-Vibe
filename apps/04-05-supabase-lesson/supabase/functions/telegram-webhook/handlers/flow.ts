@@ -12,9 +12,11 @@ import {
   SUBMIT_REJECTED,
 } from "../../_shared/content.ts";
 import type { FlowInput, FlowReply, FlowState } from "../../_shared/domain/flowState.ts";
+import { getAiSettings } from "../../_shared/services/aiSettings.ts";
 import { cancelFlow, continueFlow, isDraftSubmitted, startFlow, submitFlow } from "../../_shared/services/flow.ts";
 import { notifyManager } from "../../_shared/services/managerNotification.ts";
 import type { HandlerContext } from "../context.ts";
+import { handleAiOnStep } from "./ai.ts";
 import { reply, replyNav } from "../logging.ts";
 
 /**
@@ -73,6 +75,15 @@ async function advance(ctx: HandlerContext, state: FlowState, input: FlowInput):
   if (result.reply.screen.screen === "submit") {
     await submit(ctx, result.state);
     return;
+  }
+  // Текст не подошёл шагу (S09 §4.7): при включённом AI его разбирает агент с контекстом шага. Настройки читаем
+  // только здесь — подошедший шаг и кнопки лишнего запроса не делают.
+  if (input.type === "text" && result.reply.error && ctx.llm) {
+    const settings = await getAiSettings(ctx.client, ctx.conversation.restaurant_id);
+    if (settings.aiEnabled) {
+      await handleAiOnStep(ctx, settings, result);
+      return;
+    }
   }
   await showFlowScreen(ctx, result.state.draftId, result.reply);
 }

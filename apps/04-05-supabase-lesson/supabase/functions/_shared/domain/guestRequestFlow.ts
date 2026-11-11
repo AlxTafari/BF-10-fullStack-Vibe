@@ -21,7 +21,8 @@ export function isContactRequired(kind: GuestRequestKind | undefined): boolean {
   return kind === "manager_request";
 }
 
-function screenFor(state: GuestRequestState, env: FlowEnv): FlowScreen {
+/** Экран текущего шага. Экспортируется для черновика от агента (guestRequestDraft.ts). */
+export function guestRequestScreen(state: GuestRequestState, env: FlowEnv): FlowScreen {
   const { data } = state;
   switch (state.step) {
     case "kind":
@@ -74,7 +75,7 @@ export function startGuestRequest(env: FlowEnv, kind?: GuestRequestKind): Advanc
     data: kind ? { kind } : {},
     touchedAt: env.now.toISOString(),
   };
-  return { state, reply: { screen: screenFor(state, env) } };
+  return { state, reply: { screen: guestRequestScreen(state, env) } };
 }
 
 export function advanceGuestRequest(state: GuestRequestState, input: FlowInput, env: FlowEnv): AdvanceResult {
@@ -84,17 +85,17 @@ export function advanceGuestRequest(state: GuestRequestState, input: FlowInput, 
   const touched: GuestRequestState = { ...state, touchedAt: env.now.toISOString() };
   const stay = (error: FlowErrorCode): AdvanceResult => ({
     state: touched,
-    reply: { screen: screenFor(touched, env), error },
+    reply: { screen: guestRequestScreen(touched, env), error },
   });
   const next = (step: GuestRequestStep, patch: Partial<GuestRequestData>): AdvanceResult => {
     const moved: GuestRequestState = { ...touched, step, data: { ...touched.data, ...patch } };
-    return { state: moved, reply: { screen: screenFor(moved, env) } };
+    return { state: moved, reply: { screen: guestRequestScreen(moved, env) } };
   };
 
   if (input.type === "action" && input.action === "back") {
     const prev = goBack(touched);
     if (!prev) return stay("unavailable");
-    return { state: prev, reply: { screen: screenFor(prev, env) } };
+    return { state: prev, reply: { screen: guestRequestScreen(prev, env) } };
   }
 
   switch (state.step) {

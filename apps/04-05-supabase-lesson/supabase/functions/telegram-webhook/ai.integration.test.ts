@@ -1,9 +1,11 @@
-// Сценарии AI-маршрута (S09, сессия 2): настоящий роутер, БД с seed, фейковые Telegram и LLM.
+// Сценарии AI-маршрута (S09, сессии 2–3): настоящий роутер, БД с seed, фейковые Telegram и LLM.
 // Запуск (из supabase/functions):
 //   deno test --allow-env --allow-net --allow-read --env-file=../../.env telegram-webhook/ai.integration.test.ts
 // Без SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY пропускается.
 import { assert, assertEquals } from "@std/assert";
 import { AI_FALLBACK, aiWelcomeText, MAIN_MENU_KEYBOARD, MENU_BOOKING, MENU_MAIN } from "../_shared/content.ts";
+import { availableDates } from "../_shared/domain/bookingRules.ts";
+import { freeHoursOn } from "../_shared/domain/bookingDraft.ts";
 import { buildCallback } from "../_shared/domain/callbackData.ts";
 import { answer, call, createFakeLlm, type FakeLlm, type FakeLlmStep } from "../_shared/llm/fakeLlm.ts";
 import { getRestaurantInfo } from "../_shared/services/restaurantInfo.ts";
@@ -49,6 +51,24 @@ async function journal(s: AiScenario) {
     .order("created_at").order("id");
   if (error) throw error;
   return data ?? [];
+}
+
+const hasAction = (action: string) => (b: { callback_data: string }) => b.callback_data.startsWith("flow:") && b.callback_data.endsWith(`:${action}`);
+const hasActionPrefix = (prefix: string) => (b: { callback_data: string }) => b.callback_data.startsWith("flow:") && b.callback_data.includes(`:${prefix}`);
+const buttonsOf = (s: AiScenario) => s.guest.screen().keyboard.flat();
+
+/** Первый слот, на который сейчас можно забронировать (по часам работы seed): тест не зависит от дня запуска. */
+async function bookableSlot(client: ReturnType<typeof createServiceClient>): Promise<{ date: string; time: string }> {
+  // Бот работает с первым рестораном; обработчикам (и их тестам) репозитории недоступны — читаем запросом.
+  const { data: r, error } = await client.from("restaurants").select("timezone, opening_hours")
+    .order("created_at").limit(1).single();
+  if (error) throw error;
+  const env = { now: new Date(), timeZone: r.timezone as string, openingHours: r.opening_hours };
+  for (const date of availableDates(env)) {
+    const hours = freeHoursOn(date, env);
+    if (hours.length > 0) return { date, time: hours[0] };
+  }
+  throw new Error("нет свободных слотов в ближайшие дни");
 }
 
 /** ai_enabled ресторана на время теста; возвращается к прежнему значению в finally вызывающего. */
@@ -151,14 +171,159 @@ Deno.test({
 
 Deno.test({
   ...opts,
-  name: "AI: шаг сценария забирает текст себе, агент не вызывается",
+  name: "AI: подошедший шагу текст забирает сценарий, агент не вызывается",
   fn: () =>
     aiScenario([], async (s) => {
       await s.guest.tap(MENU_BOOKING);
-      await s.guest.text("завтра");
+      await s.guest.tapWhere(hasActionPrefix("d="));
+      await s.guest.tapWhere(hasActionPrefix("p="));
+      await s.guest.tapWhere(hasActionPrefix("h="));
+      await s.guest.text("4");
       assertEquals(s.llm.requests.length, 0);
-      // Бот остался в сценарии брони: ответ — от шага, а не запасной ответ агента.
-      assert(s.guest.screen().text !== AI_FALLBACK);
+      assert(s.guest.screen().text.includes("На чьё имя"), "следующий шаг — имя");
+    }),
+});
+
+Deno.test({
+  ...opts,
+  name: "AI (сессия 3): бронь одной фразой → недостающее шагами → карточка → заявка, как от кнопок",
+  fn: async () => {
+    const client = createServiceClient();
+    const slot = await bookableSlot(client);
+    await aiScenario([
+      call("draftBooking", { date: slot.date, time: slot.time, guests: 4 }),
+      answer("Отлично! На чьё имя оформить и как с вами связаться?"),
+    ], async (s) => {
+      await s.guest.text("стол на четверых");
+      // Ответ агента, под ним — кнопки шага «имя» (Назад / Отмена), а не suggestions.
+      assertEquals(s.guest.screen().text, "Отлично! На чьё имя оформить и как с вами связаться?");
+      assert(buttonsOf(s).some(hasAction("cancel")), "под ответом кнопки шага");
+      const { data: before } = await client.from("booking_requests").select("id").eq("conversation_id", await s.guest.conversationId());
+      assertEquals(before, [], "черновик заявку не создаёт");
+
+      // Имя и контакт — обычные шаги, без модели; комментарий не спрашивается — сразу карточка.
+      await s.guest.text("Анна");
+      await s.guest.text("+302310000000");
+      assert(s.guest.screen().text.startsWith("Проверьте заявку"), s.guest.screen().text);
+      await s.guest.tapWhere(hasAction("send"));
+
+      const { data: rows } = await client.from("booking_requests").select("guests_count, guest_name, contact, comment")
+        .eq("conversation_id", await s.guest.conversationId());
+      assertEquals(rows, [{ guests_count: 4, guest_name: "Анна", contact: "+302310000000", comment: null }]);
+      assertEquals(s.llm.remaining(), 0);
+      // Ответ агента посчитан в лимит и журнал, как любой AI-ответ.
+      const ai = (await journal(s)).filter((r) => (r.meta as { ai?: boolean } | null)?.ai);
+      assertEquals(ai.length, 1);
+    });
+  },
+});
+
+Deno.test({
+  ...opts,
+  name: "AI (сессия 3): всё в одной фразе → карточка сразу под ответом агента",
+  fn: async () => {
+    const client = createServiceClient();
+    const slot = await bookableSlot(client);
+    await aiScenario([
+      call("draftBooking", { date: slot.date, time: slot.time, guests: 2, name: "Анна", contact: "@anna_test" }),
+      answer("Проверьте, пожалуйста, заявку ниже."),
+    ], async (s) => {
+      await s.guest.text("бронь на двоих, Анна, @anna_test");
+      const texts = s.guest.messages().map((m) => m.text);
+      assert(texts.includes("Проверьте, пожалуйста, заявку ниже."));
+      assert(s.guest.screen().text.startsWith("Проверьте заявку"), "карточка — последним сообщением");
+      assert(buttonsOf(s).some(hasAction("send")));
+    });
+  },
+});
+
+Deno.test({
+  ...opts,
+  name: "AI (сессия 3): побочный вопрос на шаге «время» → ответ и кнопки шага, затем время текстом",
+  fn: async () => {
+    let hour = "";
+    await aiScenario([
+      answer("Да, детские стулья есть. На какое время вас записать?"),
+      (request) => {
+        // Агенту передан контекст шага: живой черновик и что спрашивает шаг.
+        assert(request.system.includes("# Active draft"));
+        assert(request.system.includes("asks for the time"));
+        return call("draftBooking", { time: hour });
+      },
+      answer("Записал. Сколько будет гостей?"),
+    ], async (s) => {
+      await s.guest.tap(MENU_BOOKING);
+      await s.guest.tapWhere(hasActionPrefix("d="));
+      await s.guest.tapWhere(hasActionPrefix("p="));
+      // Час для «давай в …» — последний из предложенных ботом кнопками.
+      const hourButtons = buttonsOf(s).filter(hasActionPrefix("h="));
+      hour = hourButtons.at(-1)!.text;
+
+      await s.guest.text("а у вас есть детские стулья?");
+      assertEquals(s.guest.screen().text, "Да, детские стулья есть. На какое время вас записать?");
+      assertEquals(buttonsOf(s).filter(hasActionPrefix("h=")).length, hourButtons.length, "кнопки часа на месте");
+
+      await s.guest.text(`давай в ${hour}`);
+      assertEquals(s.guest.screen().text, "Записал. Сколько будет гостей?");
+      // Дальше — обычный шаг: число гостей без модели.
+      await s.guest.text("3");
+      assert(s.guest.screen().text.includes("На чьё имя"));
+      assertEquals(s.llm.remaining(), 0);
+    });
+  },
+});
+
+Deno.test({
+  ...opts,
+  name: "AI (сессия 3): агент сломался на шаге → экран шага с ошибкой, как до S09",
+  fn: () =>
+    aiScenario([{ error: "quota" }], async (s) => {
+      await s.guest.tap(MENU_BOOKING);
+      await s.guest.text("завтра");
+      assert(s.guest.screen().text.includes("Выберите вариант кнопкой"));
+      assert(buttonsOf(s).some(hasActionPrefix("d=")));
+      const rows = await journal(s);
+      assertEquals(rows.at(-1)?.meta, { aiFallback: "quota" });
+    }),
+});
+
+Deno.test({
+  ...opts,
+  name: "AI (сессия 3): выключен → неподошедший текст на шаге даёт ошибку шага, модель не вызывается",
+  fn: async () => {
+    const client = createServiceClient();
+    const before = await setAiEnabled(client, false);
+    try {
+      await aiScenario([], async (s) => {
+        await s.guest.tap(MENU_BOOKING);
+        await s.guest.text("завтра");
+        assertEquals(s.llm.requests.length, 0);
+        assert(s.guest.screen().text.includes("Выберите вариант кнопкой"));
+      });
+    } finally {
+      await setAiEnabled(client, before);
+    }
+  },
+});
+
+Deno.test({
+  ...opts,
+  name: "AI (сессия 3): «позовите менеджера, не понравилось обслуживание» → черновик → «Отправить» → обращение",
+  fn: () =>
+    aiScenario([
+      call("draftGuestRequest", { kind: "complaint", text: "Не понравилось обслуживание" }),
+      answer("Сожалею. Передам менеджеру — оставите контакт для ответа?"),
+    ], async (s) => {
+      await s.guest.text("позовите менеджера, мне не понравилось обслуживание");
+      assertEquals(s.guest.screen().text, "Сожалею. Передам менеджеру — оставите контакт для ответа?");
+      // Контакт для жалобы необязателен: кнопка «Пропустить» шага.
+      await s.guest.tapWhere(hasAction("skip"));
+      assert(s.guest.screen().text.startsWith("Проверьте обращение"));
+      await s.guest.tapWhere(hasAction("send"));
+
+      const { data } = await s.client.from("guest_requests").select("kind, text, contact")
+        .eq("conversation_id", await s.guest.conversationId());
+      assertEquals(data, [{ kind: "complaint", text: "Не понравилось обслуживание", contact: null }]);
     }),
 });
 

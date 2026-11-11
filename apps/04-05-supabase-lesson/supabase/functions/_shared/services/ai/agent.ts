@@ -4,13 +4,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AiSettings } from "../../domain/aiSettings.ts";
 import { buildHistory, buildSystemPrompt, clampReply } from "../../domain/aiPrompt.ts";
 import { parseSuggestions, type Suggestion } from "../../domain/aiSuggestions.ts";
+import type { AdvanceResult } from "../../domain/flowState.ts";
 import { localDayBoundsUtc } from "../../domain/zonedTime.ts";
 import { type LlmClient, LlmError, type LlmMessage } from "../../llm/types.ts";
 import { countAiReplies, listRecentMessages } from "../../repositories/messagesRepo.ts";
 import { getRestaurantById } from "../../repositories/restaurantsRepo.ts";
 import type { AiTurnUsage, ConversationRow, MessageKind } from "../../types.ts";
+import { getFlowState } from "../flow.ts";
 import { getDishDetails } from "../menu.ts";
-import { REPLY, runTool, TOOL_SCHEMAS } from "./tools.ts";
+import { type FlowHolder, REPLY, runTool, TOOL_SCHEMAS } from "./tools.ts";
 
 // Обработчику нужен тип клиента для зависимостей, но импортировать llm/ ему нельзя (check:layers).
 export type { LlmClient };
@@ -38,10 +40,21 @@ export type AgentSuggestion =
 /**
  * Итог хода. usage — расход за ход; у fallback его нет, если до модели не дошли (лимит, нет ключа)
  * или она не ответила ни разу.
+ * draft — агент изменил черновик брони/обращения (сессия 3): новый шаг и его экран. Черновик уже сохранён;
+ * обработчик показывает под ответом кнопки этого шага (или карточку «Отправить») вместо suggestions.
+ * Есть и у fallback: черновик записан до сбоя, и гостю лучше показать шаг, чем главное меню.
  */
 export type AgentTurnResult =
-  | { kind: "reply"; text: string; suggestions: AgentSuggestion[]; model: string; tools: string[]; usage: AiTurnUsage }
-  | { kind: "fallback"; reason: FallbackReason; model?: string; usage?: AiTurnUsage };
+  | {
+    kind: "reply";
+    text: string;
+    suggestions: AgentSuggestion[];
+    model: string;
+    tools: string[];
+    usage: AiTurnUsage;
+    draft: AdvanceResult | null;
+  }
+  | { kind: "fallback"; reason: FallbackReason; model?: string; usage?: AiTurnUsage; draft: AdvanceResult | null };
 
 export interface AgentDeps {
   client: SupabaseClient;
@@ -57,39 +70,43 @@ export interface AgentDeps {
  */
 export async function runAgentTurn(
   deps: AgentDeps,
-  input: { conversation: ConversationRow; settings: AiSettings },
+  input: { conversation: ConversationRow; settings: AiSettings; username?: string | null },
 ): Promise<AgentTurnResult> {
   const now = deps.now ?? new Date();
   const startedAt = Date.now();
+  // Живой черновик: из диалога в начале хода, дальше его обновляют draft tools.
+  const flow: FlowHolder = { state: getFlowState(input.conversation, now), changed: null, queue: Promise.resolve() };
   // Расход копится по каждому ответу модели; ms ставится в конце хода (finish).
   const usage: AiTurnUsage = { calls: 0, inputTokens: 0, outputTokens: 0, thoughtTokens: 0, ms: 0 };
   const finish = () => ({ ...usage, ms: Date.now() - startedAt });
   // Запасной ответ несёт расход, только если модель успела ответить: эти токены оплачены.
   const fallback = (reason: FallbackReason): AgentTurnResult =>
-    usage.calls > 0 && deps.llm ? { kind: "fallback", reason, model: deps.llm.model, usage: finish() } : { kind: "fallback", reason };
+    usage.calls > 0 && deps.llm
+      ? { kind: "fallback", reason, model: deps.llm.model, usage: finish(), draft: flow.changed }
+      : { kind: "fallback", reason, draft: flow.changed };
   try {
-    if (!deps.llm) return { kind: "fallback", reason: "error" };
+    if (!deps.llm) return fallback("error");
     const llm = deps.llm;
     const { conversation, settings } = input;
 
     const restaurant = await getRestaurantById(deps.client, conversation.restaurant_id);
-    if (!restaurant) return { kind: "fallback", reason: "error" };
+    if (!restaurant) return fallback("error");
 
     // Лимит — до вызова модели: исчерпан — ни одного токена не тратим.
     const day = localDayBoundsUtc(now, restaurant.timezone);
     const used = await countAiReplies(deps.client, conversation.id, day.from, day.to);
-    if (used >= settings.dailyTurnLimit) return { kind: "fallback", reason: "limit" };
+    if (used >= settings.dailyTurnLimit) return fallback("limit");
 
     const rows = await listRecentMessages(deps.client, conversation.id, HISTORY_KINDS, settings.historyWindow);
     const history = buildHistory(rows);
     // Последней должна быть реплика гостя — на неё и отвечаем. Иначе отвечать не на что.
-    if (history.length === 0 || history[history.length - 1].role !== "guest") return { kind: "fallback", reason: "error" };
+    if (history.length === 0 || history[history.length - 1].role !== "guest") return fallback("error");
 
     const messages: LlmMessage[] = history.map((t) =>
       t.role === "guest" ? { role: "user", text: t.text } : { role: "model", text: t.text }
     );
-    const system = buildSystemPrompt({ restaurantName: restaurant.name, timeZone: restaurant.timezone, now });
-    const toolCtx = { client: deps.client, conversationId: conversation.id, now };
+    const system = buildSystemPrompt({ restaurantName: restaurant.name, timeZone: restaurant.timezone, now, flow: flow.state });
+    const toolCtx = { client: deps.client, conversationId: conversation.id, now, username: input.username ?? null, flow };
     // Какие tools с данными агент вызвал за ход (для журнала); reply — сам ответ, в список не идёт.
     const toolsUsed: string[] = [];
     const done = async (text: string, suggestions: Suggestion[]): Promise<AgentTurnResult> => ({
@@ -99,6 +116,7 @@ export async function runAgentTurn(
       model: llm.model,
       tools: toolsUsed,
       usage: finish(),
+      draft: flow.changed,
     });
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {

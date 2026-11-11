@@ -1,8 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { advanceBooking, startBooking } from "../domain/bookingFlow.ts";
+import { applyBookingDraft, type BookingDraftInput, type BookingDraftOutcome } from "../domain/bookingDraft.ts";
 import {
   type AdvanceResult,
   type BookingState,
+  type DraftOutcome,
   type FlowEnv,
   type FlowInput,
   type FlowState,
@@ -11,6 +13,11 @@ import {
   parseFlowState,
 } from "../domain/flowState.ts";
 import { advanceGuestRequest, startGuestRequest } from "../domain/guestRequestFlow.ts";
+import {
+  applyGuestRequestDraft,
+  type GuestRequestDraftField,
+  type GuestRequestDraftInput,
+} from "../domain/guestRequestDraft.ts";
 import { clearStateIfDraft, setConversationState } from "../repositories/conversationsRepo.ts";
 import { findBookingRequestByKey } from "../repositories/bookingRequestsRepo.ts";
 import { findGuestRequestByKey } from "../repositories/guestRequestsRepo.ts";
@@ -107,6 +114,40 @@ export async function continueFlow(
   // в clearStateIfDraft и ответил гостю второй раз (S07). При сбое вставки в БД остаётся сводка — повтор работает.
   if (result.reply.screen.screen !== "submit") await saveFlowState(client, conversationId, result.state);
   return result;
+}
+
+// ---------------------------------------------------------------- черновик от агента (S09)
+
+/**
+ * Поля брони, разобранные агентом из фразы гостя, → тот же черновик, что у кнопок (§4.7). Заявку не создаёт.
+ * current — живой сценарий на момент вызова (за ход агент может вызвать draft несколько раз, поэтому передаётся
+ * последним известным, а не перечитывается из диалога).
+ */
+export async function draftBookingFromAgent(
+  client: SupabaseClient,
+  conversationId: string,
+  current: FlowState | null,
+  input: BookingDraftInput,
+  username: string | null,
+): Promise<BookingDraftOutcome> {
+  const env = await loadEnv(client, username);
+  const outcome = applyBookingDraft(current, input, env);
+  await saveFlowState(client, conversationId, outcome.result.state);
+  return outcome;
+}
+
+/** То же для обращения менеджеру (§4.16). */
+export async function draftGuestRequestFromAgent(
+  client: SupabaseClient,
+  conversationId: string,
+  current: FlowState | null,
+  input: GuestRequestDraftInput,
+  username: string | null,
+): Promise<DraftOutcome<GuestRequestDraftField>> {
+  const env = await loadEnv(client, username);
+  const outcome = applyGuestRequestDraft(current, input, env);
+  await saveFlowState(client, conversationId, outcome.result.state);
+  return outcome;
 }
 
 // ---------------------------------------------------------------- отправка заявки

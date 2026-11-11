@@ -221,3 +221,9 @@ Deno.test("изменение: слот пропал → откат на выб�
   assertEquals(r.state.step, "date");
   assertEquals((r.state as BookingState).data, { name: "Анна", contact: "@anna_k", comment: "у окна" });
 });
+
+Deno.test("шаг «имя»: вопрос вместо имени не принимается (name_unlikely)", () => {
+  const r = run(startBooking(env()), [...toGuests, text("4"), text("а детские стулья есть?")]);
+  assertEquals(r.state.step, "name");
+  assertEquals(r.reply.error, "name_unlikely");
+});

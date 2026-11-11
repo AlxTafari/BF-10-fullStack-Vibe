@@ -169,7 +169,7 @@ agentTest("суточный лимит: исчерпан — модель не �
   await recordMessage(client, conversation.id, "out", "запасной", "text", { aiFallback: "error" });
   await guest("ещё вопрос");
   const { llm, result } = run(conversation, [answer("не должно дойти")], { ...DEFAULT_AI_SETTINGS, dailyTurnLimit: 5 });
-  assertEquals(await result, { kind: "fallback", reason: "limit" });
+  assertEquals(await result, { kind: "fallback", reason: "limit", draft: null });
   assertEquals(llm.requests.length, 0);
 });
 
@@ -186,9 +186,9 @@ agentTest("лимит не исчерпан, пока запасные отве�
 
 agentTest("ошибки LLM → запасной ответ с причиной", async ({ conversation, say: guest }) => {
   await guest("вопрос");
-  assertEquals(await run(conversation, [{ error: "quota" }]).result, { kind: "fallback", reason: "quota" });
-  assertEquals(await run(conversation, [{ error: "timeout" }]).result, { kind: "fallback", reason: "timeout" });
-  assertEquals(await run(conversation, [{ error: "unavailable" }]).result, { kind: "fallback", reason: "error" });
+  assertEquals(await run(conversation, [{ error: "quota" }]).result, { kind: "fallback", reason: "quota", draft: null });
+  assertEquals(await run(conversation, [{ error: "timeout" }]).result, { kind: "fallback", reason: "timeout", draft: null });
+  assertEquals(await run(conversation, [{ error: "unavailable" }]).result, { kind: "fallback", reason: "error", draft: null });
   // Модель успела ответить раз (listFaq) — расход этого вызова сохраняется в запасном ответе.
   const partial = await run(conversation, [call("listFaq"), { error: "bad_response" }]).result;
   assert(partial.kind === "fallback");
@@ -209,7 +209,7 @@ agentTest("зацикливание: модель не отвечает и на 
 agentTest("нет ключа Gemini — запасной ответ", async ({ conversation, say: guest }) => {
   await guest("вопрос");
   const turn = await runAgentTurn({ client: createServiceClient(), llm: null }, { conversation, settings: DEFAULT_AI_SETTINGS });
-  assertEquals(turn, { kind: "fallback", reason: "error" });
+  assertEquals(turn, { kind: "fallback", reason: "error", draft: null });
 });
 
 agentTest("расход хода: токены суммируются по всем вызовам модели", async ({ conversation, say: guest }) => {
@@ -286,4 +286,35 @@ agentTest("простой текст вопреки requireToolCall — отве
   const turn = await run(conversation, [say("Здравствуйте!")]).result;
   assert(turn.kind === "reply");
   assertEquals(turn.suggestions, []);
+});
+
+agentTest("draftBooking (сессия 3): черновик в conversations.state, заявки нет, ошибки полей уходят модели", async ({ conversation, say: guest }) => {
+  await guest("стол на вчера на четверых, я Анна");
+  let seen: Record<string, unknown> = {};
+  const { result } = run(conversation, [
+    // Вчерашняя дата — ошибка поля; гости и имя принимаются.
+    call("draftBooking", { date: "2000-01-01", guests: 4, name: "Анна" }),
+    (request) => {
+      seen = lastToolResult(request);
+      return answer("На вчера уже нельзя. На какую дату?");
+    },
+  ]);
+  const turn = await result;
+  assert(turn.kind === "reply");
+  assertEquals(turn.tools, ["draftBooking"]);
+  assertEquals(seen.errors, { date: "date_in_past" });
+  assertEquals(seen.accepted, ["guests", "name"]);
+  assertEquals(seen.ready, false);
+
+  // Результат хода несёт шаг черновика — обработчик покажет под ответом кнопки дат.
+  assertEquals(turn.draft?.state.step, "date");
+  assert(["ask_date", "no_dates"].includes(turn.draft?.reply.screen.screen ?? ""));
+
+  const client = createServiceClient();
+  const { data: conv } = await client.from("conversations").select("state").eq("id", conversation.id).single();
+  const state = conv!.state as { flow: string; data: Record<string, unknown> };
+  assertEquals(state.flow, "booking");
+  assertEquals({ guests: state.data.guests, name: state.data.name }, { guests: 4, name: "Анна" });
+  const { data: bookings } = await client.from("booking_requests").select("id").eq("conversation_id", conversation.id);
+  assertEquals(bookings, []);
 });

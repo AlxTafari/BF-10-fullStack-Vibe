@@ -11,7 +11,7 @@ import {
   todayIn,
   validateSlot,
 } from "./bookingRules.ts";
-import { validateComment, validateContact, validateGuests, validateName } from "./fieldValidation.ts";
+import { looksLikeName, validateComment, validateContact, validateGuests, validateName } from "./fieldValidation.ts";
 import {
   type AdvanceResult,
   type BookingChange,
@@ -30,7 +30,8 @@ function bookingEnv(env: FlowEnv): BookingEnv {
   return { now: env.now, timeZone: env.timeZone, openingHours: env.openingHours };
 }
 
-function screenFor(state: BookingState, env: FlowEnv): FlowScreen {
+/** Экран текущего шага. Экспортируется для черновика от агента (bookingDraft.ts): он ставит шаг сам. */
+export function bookingScreen(state: BookingState, env: FlowEnv): FlowScreen {
   const { data } = state;
   const be = bookingEnv(env);
   switch (state.step) {
@@ -110,7 +111,7 @@ export function startBooking(env: FlowEnv, change?: BookingChange): AdvanceResul
     touchedAt: env.now.toISOString(),
     ...(change ? { change } : {}),
   };
-  return { state, reply: { screen: screenFor(state, env) } };
+  return { state, reply: { screen: bookingScreen(state, env) } };
 }
 
 /**
@@ -142,21 +143,21 @@ export function advanceBooking(state: BookingState, input: FlowInput, env: FlowE
   const touched: BookingState = { ...state, touchedAt: env.now.toISOString() };
   const stay = (error: FlowErrorCode): AdvanceResult => ({
     state: touched,
-    reply: { screen: screenFor(touched, env), error },
+    reply: { screen: bookingScreen(touched, env), error },
   });
   const next = (step: BookingStep, patch: Partial<BookingData>): AdvanceResult => {
     const moved: BookingState = { ...touched, step, data: { ...touched.data, ...patch } };
-    return { state: moved, reply: { screen: screenFor(moved, env) } };
+    return { state: moved, reply: { screen: bookingScreen(moved, env) } };
   };
 
   if (input.type === "action" && input.action === "back") {
     const prev = goBack(touched);
     if (!prev) return stay("unavailable");
-    return { state: prev, reply: { screen: screenFor(prev, env) } };
+    return { state: prev, reply: { screen: bookingScreen(prev, env) } };
   }
 
   const rolled = rollbackIfSlotGone(touched, env);
-  if (rolled) return { state: rolled, reply: { screen: screenFor(rolled, env), error: "unavailable" } };
+  if (rolled) return { state: rolled, reply: { screen: bookingScreen(rolled, env), error: "unavailable" } };
 
   const be = bookingEnv(env);
   switch (state.step) {
@@ -197,16 +198,20 @@ export function advanceBooking(state: BookingState, input: FlowInput, env: FlowE
     case "name": {
       if (input.type === "action") return stay("use_buttons");
       const v = validateName(input.text);
-      return v.ok ? next("contact", { name: v.value }) : stay(v.error);
+      if (!v.ok) return stay(v.error);
+      // Вопрос или фраза вместо имени не принимается: при включённом AI её разберёт агент (S09).
+      return looksLikeName(v.value) ? next("contact", { name: v.value }) : stay("name_unlikely");
     }
     case "contact": {
+      // Комментарий уже решён (черновик от агента, S09: его в диалоге не спрашивают) — сразу к сводке.
+      const after: BookingStep = state.data.comment !== undefined ? "confirm" : "comment";
       if (input.type === "action") {
         if (input.action !== "me" || !env.username) return stay("unavailable");
         const v = validateContact(`@${env.username}`);
-        return v.ok ? next("comment", { contact: v.value }) : stay(v.error);
+        return v.ok ? next(after, { contact: v.value }) : stay(v.error);
       }
       const v = validateContact(input.text);
-      return v.ok ? next("comment", { contact: v.value }) : stay(v.error);
+      return v.ok ? next(after, { contact: v.value }) : stay(v.error);
     }
     case "comment": {
       if (input.type === "action") return input.action === "skip" ? next("confirm", { comment: null }) : stay("unavailable");

@@ -15,6 +15,25 @@ Deno.test("buildSystemPrompt: имя ресторана, время и ключ�
   assert(prompt.includes("AI assistant"));
 });
 
+Deno.test("buildSystemPrompt: живой черновик — блок с шагом и данными, без черновика блока нет", () => {
+  const base = { restaurantName: "Тест", timeZone: "Europe/Athens", now: new Date("2026-11-11T12:00:00Z") };
+  assert(!buildSystemPrompt(base).includes("# Active draft"));
+  const prompt = buildSystemPrompt({
+    ...base,
+    flow: {
+      flow: "booking",
+      step: "hour",
+      draftId: "d",
+      touchedAt: "2026-11-11T12:00:00Z",
+      data: { date: "2026-11-12", period: "dinner" },
+    },
+  });
+  assert(prompt.includes("# Active draft"));
+  assert(prompt.includes("asks for the time"));
+  assert(prompt.includes('"date":"2026-11-12"'));
+  assert(prompt.includes("draftBooking"));
+});
+
 Deno.test("buildHistory: начинается с гостя, одна сторона подряд склеивается", () => {
   const turns = buildHistory([
     { direction: "out", text: "ответ на обрезанный вопрос" },

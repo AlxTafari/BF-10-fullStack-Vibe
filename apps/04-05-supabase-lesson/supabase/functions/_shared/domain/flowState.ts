@@ -107,6 +107,25 @@ export interface AdvanceResult {
   reply: FlowReply;
 }
 
+// ---------------------------------------------------------------- черновик от агента (S09)
+
+/**
+ * Почему поле от агента не принято. Сверх ошибок ручного ввода: время без даты, поле, которое в этом сценарии
+ * не меняется (имя и контакт при изменении брони), неизвестный тип обращения.
+ */
+export type DraftError = FlowErrorCode | "needs_date" | "not_editable" | "bad_kind";
+
+/**
+ * Итог применения полей от агента к черновику. result — тот же AdvanceResult, что у кнопочного шага:
+ * дальше черновик живёт в обычном сценарии. accepted/errors/missing — ответ модели, что спросить у гостя.
+ */
+export interface DraftOutcome<F extends string> {
+  result: AdvanceResult;
+  accepted: F[];
+  errors: Partial<Record<F, DraftError>>;
+  missing: F[];
+}
+
 // ---------------------------------------------------------------- разбор из jsonb
 
 const BOOKING_STEPS: BookingStep[] = ["date", "period", "hour", "guests", "name", "contact", "comment", "confirm"];

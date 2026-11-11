@@ -169,6 +169,7 @@ const FLOW_ERROR_TEXT: Record<FlowErrorCode, string> = {
   guests_too_many: `Не больше ${GUESTS_MAX} гостей.`,
   name_too_short: "Имя слишком короткое — минимум 2 символа.",
   name_too_long: "Имя слишком длинное — до 60 символов.",
+  name_unlikely: "Не похоже на имя. Напишите, на чьё имя оформить заявку.",
   contact_invalid: "Не похоже на контакт. Напишите телефон (10–15 цифр) или @username.",
   comment_too_long: `Комментарий слишком длинный — до ${COMMENT_MAX} символов.`,
   text_empty: "Сообщение пустое. Напишите текст.",
