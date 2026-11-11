@@ -99,6 +99,18 @@ Deno.test("replyNav: дубль в окне — send, затем удалени�
   assertEquals(journal, ["Меню"]); // дубль в журнале остаётся
 });
 
+Deno.test("replyNav: шаг сценария после текста — прежний вопрос остаётся, кнопки сняты (BUG-002)", async () => {
+  const { ctx, calls } = setup({ lastNav: navOf("flow:A", 100) });
+  await replyNav(ctx, "flow:A", "Как с вами связаться?");
+  assertEquals(calls.filter((c) => !c.startsWith("rpc")), ["send:Как с вами связаться?", "clear:100"]);
+});
+
+Deno.test("replyNav: итог сценария — сводка остаётся без кнопок, итог внизу", async () => {
+  const { ctx, calls } = setup({ lastNav: navOf("flow:A", 100), callbackMessageId: 100 });
+  await replyNav(ctx, "flow:A", "Заявка передана", undefined, true);
+  assertEquals(calls.filter((c) => !c.startsWith("rpc")), ["send:Заявка передана", "clear:100"]);
+});
+
 Deno.test("replyNav: другой экран — ничего не удаляется", async () => {
   const { ctx, calls } = setup({ lastNav: navOf("menu", 100) });
   await replyNav(ctx, "info", "Инфо");

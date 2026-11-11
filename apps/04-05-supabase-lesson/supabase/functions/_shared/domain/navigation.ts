@@ -26,9 +26,13 @@ export function sectionOf(screen: string): NavSection | null {
   return null;
 }
 
+/**
+ * clearId — у прежнего сообщения снять кнопки, текст оставить (сценарий, BUG-002): история брони читается как анкета —
+ * вопрос бота, ответ гостя, — а нажать старые кнопки уже нельзя.
+ */
 export type NavDecision =
   | { type: "edit"; messageId: number }
-  | { type: "send"; deleteId: number | null };
+  | { type: "send"; deleteId: number | null; clearId?: number };
 
 interface DecideNavInput {
   screen: NavScreen;
@@ -51,8 +55,9 @@ export function decideNav({ screen, callbackMessageId, last, now, redraw = false
     return { type: "edit", messageId: last.messageId };
   }
 
+  // Итог сценария: новое сообщение внизу, сводка остаётся в истории без кнопок — видно, что именно отправлено.
   if (last && section === "flow" && last.screen === screen && redraw) {
-    return { type: "send", deleteId: last.messageId };
+    return { type: "send", deleteId: null, clearId: last.messageId };
   }
 
   // Сценарий, кнопка: нажата на последнем сообщении этого же черновика → правим его на месте.
@@ -60,11 +65,11 @@ export function decideNav({ screen, callbackMessageId, last, now, redraw = false
     return { type: "edit", messageId: last.messageId };
   }
 
-  // Сценарий, текстовый ответ (имя, контакт, комментарий): гость написал ниже, и правка сообщения выше осталась бы
-  // за его текстом (а повтор той же ошибки Telegram отверг бы как «not modified»). Поэтому рисуем шаг заново внизу,
-  // а прежнее сообщение этого черновика удаляем.
+  // Сценарий, текстовый ответ (имя, контакт, пожелание): гость написал ниже, и правка сообщения выше осталась бы
+  // за его текстом (а повтор той же ошибки Telegram отверг бы как «not modified»). Поэтому рисуем шаг заново внизу.
+  // Прежний вопрос не удаляем (BUG-002: иначе в истории висят ответы гостя без вопросов) — только снимаем кнопки.
   if (last && section === "flow" && last.screen === screen && callbackMessageId === null) {
-    return { type: "send", deleteId: last.messageId };
+    return { type: "send", deleteId: null, clearId: last.messageId };
   }
 
   // Антидубль: удаляем предыдущее, только если это ТОТ ЖЕ экран и окно ещё не вышло. Строгое «<»: ровно 120 с — уже не дубль.

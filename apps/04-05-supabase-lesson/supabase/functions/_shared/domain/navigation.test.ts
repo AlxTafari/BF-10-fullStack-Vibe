@@ -104,17 +104,19 @@ Deno.test("сценарий: кнопка на последнем сообщен
   });
 });
 
-Deno.test("сценарий: текстовый шаг (имя, контакт) → новое сообщение внизу, прежнее удаляем", () => {
+Deno.test("сценарий: текстовый шаг (имя, контакт) → новое сообщение внизу, у прежнего снимаем кнопки (BUG-002)", () => {
   assertEquals(decideNav({ screen: "flow:A", callbackMessageId: null, last: last("flow:A", 3600), now: NOW }), {
     type: "send",
-    deleteId: 100,
+    deleteId: null,
+    clearId: 100,
   });
 });
 
-Deno.test("сценарий: итог (redraw) → новое сообщение внизу, сводка удаляется", () => {
+Deno.test("сценарий: итог (redraw) → новое сообщение внизу, сводка остаётся без кнопок", () => {
   assertEquals(decideNav({ screen: "flow:A", callbackMessageId: 100, last: last("flow:A", 3600), now: NOW, redraw: true }), {
     type: "send",
-    deleteId: 100,
+    deleteId: null,
+    clearId: 100,
   });
   // Сводки нет (другой черновик) — удалять нечего.
   assertEquals(decideNav({ screen: "flow:B", callbackMessageId: 100, last: last("flow:A"), now: NOW, redraw: true }), {
