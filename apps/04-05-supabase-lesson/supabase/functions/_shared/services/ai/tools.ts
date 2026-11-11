@@ -1,7 +1,8 @@
 // Реестр tools агента (S09): имя → схема для модели + вызов сервиса ядра (ADR-004: сервисы про AI не знают,
 // адаптер — здесь). Tools читают данные; draftBooking и draftGuestRequest пишут только черновик сценария
-// (conversations.state) — то же, что гость может сделать кнопками. Создание брони и обращения — только кнопкой гостя
-// «Отправить» под карточкой; reply — финальный ответ, не данные.
+// (conversations.state) — то же, что гость может сделать кнопками. flagThreat ставит пометку диалогу для менеджера —
+// единственная запись по решению агента, от имени гостя она ничего не делает. Создание брони и обращения — только
+// кнопкой гостя «Отправить» под карточкой; reply — финальный ответ, не данные.
 //
 // Аргументы приходят от модели, а значит, косвенно от гостя: проверяем каждый, как ввод пользователя.
 // Ответы tools — только гостевые данные; блюда в стоп-листе (is_available = false) агенту не отдаются вовсе
@@ -14,6 +15,7 @@ import type { LlmToolCall, LlmToolSchema } from "../../llm/types.ts";
 import type { BookingDraftInput } from "../../domain/bookingDraft.ts";
 import { type AdvanceResult, type FlowState, GUEST_REQUEST_KINDS } from "../../domain/flowState.ts";
 import { isContactRequired } from "../../domain/guestRequestFlow.ts";
+import { FLAG_REASON_MAX_LENGTH, flagThreat } from "../conversations.ts";
 import { getFaqAnswer, listFaq } from "../faq.ts";
 import { draftBookingFromAgent, draftGuestRequestFromAgent, type GuestIdentity } from "../flow.ts";
 import { type DishSummary, filterMenuByAllergens, getDishDetails, listMenuCategories, searchMenu } from "../menu.ts";
@@ -358,6 +360,28 @@ const TOOLS: ToolDefinition[] = [
         ready,
         guestSees: guestSees(ready),
       };
+    },
+  },
+  {
+    schema: {
+      name: "flagThreat",
+      description:
+        "Flag this conversation for the manager: ONLY for an explicit threat of violence against staff or other guests, or of " +
+        "damage to the restaurant. Not for profanity, rudeness, complaints or jokes; if in doubt, do not flag. " +
+        "It does not reply to the guest: still answer calmly with reply.",
+      parameters: {
+        type: "object",
+        properties: {
+          reason: { type: "string", description: "one short sentence for the manager: what was threatened, in Russian" },
+        },
+        required: ["reason"],
+      },
+    },
+    async run(ctx, args) {
+      const reason = stringArg(args, "reason", FLAG_REASON_MAX_LENGTH);
+      if (!reason) return invalid(`reason must be a non-empty sentence up to ${FLAG_REASON_MAX_LENGTH} characters`);
+      const { alreadyFlagged } = await flagThreat(ctx.client, ctx.conversationId, reason);
+      return { flagged: true, alreadyFlagged };
     },
   },
   {

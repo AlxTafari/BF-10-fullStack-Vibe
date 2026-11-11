@@ -106,3 +106,19 @@ export async function fetchLastNav(client: SupabaseClient, conversationId: strin
   if (error) throw error;
   return (data as { last_nav?: unknown } | null)?.last_nav ?? null;
 }
+
+/**
+ * Пометка угрозы (S09, tool flagThreat). Ставится, только если диалог ещё не помечен: первая причина остаётся,
+ * пока менеджер не нажмёт «Разобрано» (RPC resolve_conversation_flag), — повторная угроза видна в самой переписке.
+ * true — пометку поставили сейчас, false — уже стояла.
+ */
+export async function flagConversation(client: SupabaseClient, conversationId: string, reason: string): Promise<boolean> {
+  const { data, error } = await client
+    .from("conversations")
+    .update({ flagged_at: new Date().toISOString(), flag_reason: reason })
+    .eq("id", conversationId)
+    .is("flagged_at", null)
+    .select("id");
+  if (error) throw error;
+  return (data?.length ?? 0) > 0;
+}

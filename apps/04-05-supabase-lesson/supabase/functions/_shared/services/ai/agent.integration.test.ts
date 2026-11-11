@@ -318,3 +318,38 @@ agentTest("draftBooking (сессия 3): черновик в conversations.stat
   const { data: bookings } = await client.from("booking_requests").select("id").eq("conversation_id", conversation.id);
   assertEquals(bookings, []);
 });
+
+agentTest("flagThreat: пометка ставится один раз, первая причина остаётся; пустая причина отклоняется", async ({ conversation, say: guest }) => {
+  const client = createServiceClient();
+  const flagOf = async () =>
+    (await client.from("conversations").select("flagged_at, flag_reason").eq("id", conversation.id).single()).data;
+
+  await guest("я приду и разнесу ваш зал");
+  let invalidResult: Record<string, unknown> = {};
+  const first = await run(conversation, [
+    call("flagThreat", { reason: "  " }),
+    (request) => {
+      invalidResult = lastToolResult(request);
+      return call("flagThreat", { reason: "Гость угрожает разгромить зал" });
+    },
+    answer("Мне жаль, что вы расстроены. Чем могу помочь?"),
+  ]).result;
+  assertEquals(invalidResult.error, "invalid_arguments");
+  assert(first.kind === "reply");
+  assertEquals(first.tools, ["flagThreat", "flagThreat"]);
+  const flag = await flagOf();
+  assert(flag?.flagged_at, "пометка не поставлена");
+  assertEquals(flag.flag_reason, "Гость угрожает разгромить зал");
+
+  await guest("и персоналу достанется");
+  let second: Record<string, unknown> = {};
+  await run(conversation, [
+    call("flagThreat", { reason: "Угроза персоналу" }),
+    (request) => {
+      second = lastToolResult(request);
+      return answer("Давайте спокойно разберёмся.");
+    },
+  ]).result;
+  assertEquals(second, { flagged: true, alreadyFlagged: true });
+  assertEquals((await flagOf())?.flag_reason, "Гость угрожает разгромить зал");
+});

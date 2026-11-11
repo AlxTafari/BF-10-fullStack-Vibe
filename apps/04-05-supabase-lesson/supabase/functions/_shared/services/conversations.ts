@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { upsertConversation } from "../repositories/conversationsRepo.ts";
+import { flagConversation, upsertConversation } from "../repositories/conversationsRepo.ts";
 import { logMessage } from "../repositories/messagesRepo.ts";
 import { getRestaurant } from "../repositories/restaurantsRepo.ts";
 import type { ConversationRow, MessageDirection, MessageKind, MessageMeta } from "../types.ts";
@@ -34,4 +34,18 @@ export async function recordMessage(
   meta?: MessageMeta,
 ): Promise<void> {
   await logMessage(client, { conversationId, direction, text, kind, meta });
+}
+
+/** Предел причины пометки: менеджеру нужна одна фраза, а не пересказ переписки. */
+export const FLAG_REASON_MAX_LENGTH = 300;
+
+/**
+ * Пометить диалог как содержащий угрозу персоналу или ресторану (S09 §4.11). Единственная запись по решению
+ * агента: от имени гостя она ничего не делает, только показывает бейдж менеджеру. Уже помеченный диалог не
+ * перезаписывается. Причина обрезается до FLAG_REASON_MAX_LENGTH.
+ */
+export async function flagThreat(client: SupabaseClient, conversationId: string, reason: string): Promise<{ alreadyFlagged: boolean }> {
+  const trimmed = reason.trim().slice(0, FLAG_REASON_MAX_LENGTH);
+  const flagged = await flagConversation(client, conversationId, trimmed);
+  return { alreadyFlagged: !flagged };
 }
