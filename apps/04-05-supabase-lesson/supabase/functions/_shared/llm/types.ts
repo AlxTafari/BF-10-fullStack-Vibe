@@ -51,6 +51,13 @@ export interface LlmRequest {
   system: string;
   messages: LlmMessage[];
   tools: LlmToolSchema[];
+  /**
+   * true — модель обязана ответить вызовом tool, простой текст запрещён (у Gemini — режим ANY). Агент так
+   * получает финальный ответ только через tool reply: текст и кнопки в одном действии.
+   */
+  requireToolCall?: boolean;
+  /** Из tools разрешены только эти (например, на последнем раунде — только reply). Не задано — все. */
+  allowedTools?: string[];
   /** Предел одного вызова. Сработал — LlmError("timeout"). */
   timeoutMs: number;
 }

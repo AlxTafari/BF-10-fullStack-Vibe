@@ -10,12 +10,15 @@ import { countAiReplies, listRecentMessages } from "../../repositories/messagesR
 import { getRestaurantById } from "../../repositories/restaurantsRepo.ts";
 import type { AiTurnUsage, ConversationRow, MessageKind } from "../../types.ts";
 import { getDishDetails } from "../menu.ts";
-import { runTool, SUGGEST_ACTIONS, TOOL_SCHEMAS } from "./tools.ts";
+import { REPLY, runTool, TOOL_SCHEMAS } from "./tools.ts";
 
 // Обработчику нужен тип клиента для зависимостей, но импортировать llm/ ему нельзя (check:layers).
 export type { LlmClient };
 
-/** Сколько раз за ход модель может попросить tools. Дальше — запасной ответ: модель, видимо, зациклилась. */
+/**
+ * Сколько раундов tools с данными за ход. После них модели разрешён только reply: ход заканчивается ответом
+ * по тому, что уже найдено, а не запасным ответом.
+ */
 export const MAX_TOOL_ROUNDS = 5;
 /** Предел одного вызова LLM и всего хода (S09 §2). */
 export const LLM_CALL_TIMEOUT_MS = 20_000;
@@ -87,8 +90,16 @@ export async function runAgentTurn(
     );
     const system = buildSystemPrompt({ restaurantName: restaurant.name, timeZone: restaurant.timezone, now });
     const toolCtx = { client: deps.client, conversationId: conversation.id, now };
+    // Какие tools с данными агент вызвал за ход (для журнала); reply — сам ответ, в список не идёт.
     const toolsUsed: string[] = [];
-    let suggestions: Suggestion[] = [];
+    const done = async (text: string, suggestions: Suggestion[]): Promise<AgentTurnResult> => ({
+      kind: "reply",
+      text: clampReply(text),
+      suggestions: await onlyPublishedDishes(deps.client, suggestions),
+      model: llm.model,
+      tools: toolsUsed,
+      usage: finish(),
+    });
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const left = TURN_TIMEOUT_MS - (Date.now() - startedAt);
@@ -98,6 +109,10 @@ export async function runAgentTurn(
         system,
         messages,
         tools: TOOL_SCHEMAS,
+        // Ответ — только вызовом tool: финальный текст приходит через reply вместе с кнопками.
+        requireToolCall: true,
+        // Раунды с данными кончились — остаётся только ответить по найденному.
+        allowedTools: round === MAX_TOOL_ROUNDS ? [REPLY] : undefined,
         timeoutMs: Math.min(LLM_CALL_TIMEOUT_MS, left),
       });
       usage.calls++;
@@ -105,28 +120,31 @@ export async function runAgentTurn(
       usage.outputTokens += response.usage?.output ?? 0;
       usage.thoughtTokens += response.usage?.thoughts ?? 0;
 
-      if (response.kind === "text") {
-        return {
-          kind: "reply",
-          text: clampReply(response.text),
-          suggestions: await onlyPublishedDishes(deps.client, suggestions),
-          model: llm.model,
-          tools: toolsUsed,
-          usage: finish(),
-        };
-      }
+      // Простой текст при requireToolCall провайдер давать не должен; если всё же дал — это ответ без кнопок.
+      if (response.kind === "text") return await done(response.text, []);
 
-      // Модель просит tools: её сообщение (с providerState) и результаты уходят в контекст следующего вызова.
+      // Один reply с текстом — конец хода. reply с пустым текстом идёт дальше как обычный раунд: модель получит
+      // ошибку empty_text и ответит снова, а гость не получит пустое сообщение.
+      const replyCall = response.calls.length === 1 && response.calls[0].name === REPLY ? response.calls[0] : null;
+      const replyText = typeof replyCall?.args?.text === "string" ? replyCall.args.text.trim() : "";
+      if (replyCall && replyText) return await done(replyText, parseSuggestions(replyCall.args?.actions));
+
+      // Модель просит данные: её сообщение (с providerState) и результаты уходят в контекст следующего вызова.
+      // reply рядом с другими tools — ответ до результатов: отклоняется (runTool вернёт reply_ignored), чтобы
+      // текст не был написан вслепую. На каждый вызов нужен ответ — так требует провайдер.
       messages.push({ role: "model", text: response.text, toolCalls: response.calls, providerState: response.providerState });
       const results = await Promise.all(response.calls.map(async (call) => {
+        if (call.name === REPLY) {
+          const result = replyCall ? { error: "empty_text", details: "reply.text must not be empty" } : await runTool(toolCtx, call);
+          return { callId: call.id, name: call.name, result };
+        }
         toolsUsed.push(call.name);
-        if (call.name === SUGGEST_ACTIONS) suggestions = parseSuggestions(call.args?.actions);
         return { callId: call.id, name: call.name, result: await runTool(toolCtx, call) };
       }));
       messages.push({ role: "tool", results });
     }
-    // MAX_TOOL_ROUNDS раундов tools, а ответа всё нет.
-    console.error("agent: tool rounds exceeded");
+    // Даже на последнем раунде (разрешён только reply) ответа нет.
+    console.error("agent: no reply after tool rounds");
     return fallback("error");
   } catch (error) {
     if (error instanceof LlmError) {

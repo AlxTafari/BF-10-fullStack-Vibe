@@ -1,5 +1,6 @@
 // Реестр tools агента (S09): имя → схема для модели + вызов сервиса ядра (ADR-004: сервисы про AI не знают,
-// адаптер — здесь). Все tools только читают. Создание брони и обращения — кнопкой гостя (сессия 3).
+// адаптер — здесь). Все tools только читают; reply — финальный ответ, не данные. Создание брони и обращения —
+// кнопкой гостя (сессия 3).
 //
 // Аргументы приходят от модели, а значит, косвенно от гостя: проверяем каждый, как ввод пользователя.
 // Ответы tools — только гостевые данные; блюда в стоп-листе (is_available = false) агенту не отдаются вовсе
@@ -27,8 +28,12 @@ interface ToolDefinition {
   run(ctx: ToolContext, args: Record<string, unknown>): Promise<ToolResult>;
 }
 
-/** Имя служебного tool кнопок: его аргументы забирает агент (agent.ts), сервисов он не вызывает. */
-export const SUGGEST_ACTIONS = "suggestActions";
+/**
+ * Финальный ответ агента: текст + кнопки одним вызовом (S09). Агент (agent.ts) заканчивает на нём ход,
+ * сервисов он не вызывает. Кнопки — поле ответа, а не отдельный tool: модель не может пообещать кнопку
+ * и забыть её выбрать, и ход стоит на один вызов модели меньше.
+ */
+export const REPLY = "reply";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -230,13 +235,16 @@ const TOOLS: ToolDefinition[] = [
   },
   {
     schema: {
-      name: SUGGEST_ACTIONS,
+      name: REPLY,
       description:
-        "Buttons under your answer, up to 3. dish needs dishId of a dish you mentioned. " +
-        "booking = book a table, menu = open the menu, my_requests = guest's bookings, manager = write to the manager, main_menu = main menu.",
+        "Your final answer to the guest: the text and up to 3 buttons under it. Every turn ends with exactly one reply call, " +
+        "made alone, after you have the tool results you need. actions: dish needs dishId of a dish you mentioned; " +
+        "booking = book a table, menu = open the menu, my_requests = guest's bookings, manager = write to the manager, " +
+        "main_menu = main menu. Pass an empty list if no button fits.",
       parameters: {
         type: "object",
         properties: {
+          text: { type: "string", description: "answer to the guest, plain text, in the guest's language" },
           actions: {
             type: "array",
             items: {
@@ -249,12 +257,13 @@ const TOOLS: ToolDefinition[] = [
             },
           },
         },
-        required: ["actions"],
+        required: ["text", "actions"],
       },
     },
-    // Кнопки забирает агент из аргументов вызова; модели достаточно подтверждения.
+    // reply разбирает агент (agent.ts): это конец хода, а не запрос данных. Сюда он попадает, только если
+    // пришёл вместе с другими tools — тогда он отклоняется, модель повторит его после результатов.
     run() {
-      return Promise.resolve({ ok: true });
+      return Promise.resolve({ error: "reply_ignored", details: "call reply alone, after you have seen the tool results" });
     },
   },
 ];

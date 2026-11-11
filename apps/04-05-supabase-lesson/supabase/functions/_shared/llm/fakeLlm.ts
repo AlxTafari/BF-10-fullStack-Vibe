@@ -35,7 +35,14 @@ export function createFakeLlm(steps: FakeLlmStep[], model = "fake-model"): FakeL
   };
 }
 
-/** Короткие конструкторы ответов для читаемых тестов. */
+// Короткие конструкторы ответов для читаемых тестов.
+
+/** Финальный ответ агента — вызов tool reply: текст + кнопки (так отвечает модель в режиме requireToolCall). */
+export const answer = (text: string, actions: Record<string, unknown>[] = []): LlmResponse => ({
+  kind: "tool_calls",
+  calls: [{ name: "reply", args: { text, actions } }],
+});
+/** Простой текст — провайдер вернул его вопреки requireToolCall; агент принимает как ответ без кнопок. */
 export const say = (text: string): LlmResponse => ({ kind: "text", text });
 export const call = (name: string, args: Record<string, unknown> = {}, id?: string): LlmResponse => ({
   kind: "tool_calls",

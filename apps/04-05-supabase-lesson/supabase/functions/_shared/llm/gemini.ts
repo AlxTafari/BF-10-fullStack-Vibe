@@ -1,6 +1,6 @@
 // Обёртка над SDK Gemini (S09). Единственное место, где импортируется @google/genai (правило check:layers):
 // наружу — только наши типы из types.ts. По образцу _shared/telegram/client.ts.
-import { ApiError, type Content, GoogleGenAI, type Part } from "@google/genai";
+import { ApiError, type Content, FunctionCallingConfigMode, GoogleGenAI, type Part } from "@google/genai";
 import { type LlmClient, LlmError, type LlmMessage, type LlmRequest, type LlmResponse, type LlmUsage } from "./types.ts";
 
 /**
@@ -35,6 +35,10 @@ export function createGeminiClient(apiKey: string, model: string): LlmClient {
                   parametersJsonSchema: t.parameters,
                 })),
               }]
+              : undefined,
+            // ANY — ответ только вызовом tool (allowedFunctionNames сужает набор); иначе AUTO — модель решает сама.
+            toolConfig: request.requireToolCall
+              ? { functionCallingConfig: { mode: FunctionCallingConfigMode.ANY, allowedFunctionNames: request.allowedTools } }
               : undefined,
             abortSignal: signal,
           },

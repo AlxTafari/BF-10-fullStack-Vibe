@@ -3,7 +3,7 @@
 // Без SUPABASE_URL тесты пропускаются (в CI их гоняет job integration). Каждый тест — свой диалог, удаляется в конце.
 import { assert, assertEquals } from "@std/assert";
 import { type AiSettings, DEFAULT_AI_SETTINGS } from "../../domain/aiSettings.ts";
-import { call, createFakeLlm, type FakeLlmStep, say } from "../../llm/fakeLlm.ts";
+import { answer, call, createFakeLlm, type FakeLlmStep, say } from "../../llm/fakeLlm.ts";
 import type { LlmMessage, LlmRequest } from "../../llm/types.ts";
 import { upsertConversation } from "../../repositories/conversationsRepo.ts";
 import { getRestaurant } from "../../repositories/restaurantsRepo.ts";
@@ -66,7 +66,7 @@ agentTest("ответ по данным tool, результат tool уходи
     call("filterMenuByAllergens", { allergens: ["milk"] }),
     (request) => {
       seen = lastToolResult(request);
-      return say("Без молока: дорада, осьминог.");
+      return answer("Без молока: дорада, осьминог.");
     },
   ]);
   const turn = await result;
@@ -92,7 +92,7 @@ agentTest("контекст: системный промпт, история б�
   await recordMessage(client, conversation.id, "out", "Здравствуйте!");
   await recordMessage(client, conversation.id, "in", "[кнопка] menu:menu", "button");
   await guest("че есть горячего?");
-  const { llm, result } = run(conversation, [say("Дорада на гриле и осьминог.")]);
+  const { llm, result } = run(conversation, [answer("Дорада на гриле и осьминог.")]);
   await result;
   const request = llm.requests[0];
   assert(request.system.includes("Ресторан Лавраки"));
@@ -106,7 +106,7 @@ agentTest("контекст: системный промпт, история б�
 
 agentTest("окно истории: модель видит только последние N сообщений", async ({ conversation, say: guest }) => {
   for (let i = 1; i <= 6; i++) await guest(`вопрос ${i}`);
-  const { llm, result } = run(conversation, [say("ок")], { ...DEFAULT_AI_SETTINGS, historyWindow: 4 });
+  const { llm, result } = run(conversation, [answer("ок")], { ...DEFAULT_AI_SETTINGS, historyWindow: 4 });
   await result;
   // Шесть реплик гостя подряд склеены в одну; в окно попали только последние четыре.
   assertEquals(llm.requests[0].messages, [{ role: "user", text: "вопрос 3\nвопрос 4\nвопрос 5\nвопрос 6" }]);
@@ -121,7 +121,7 @@ agentTest("стоп-лист: карточка блюда для AI — как �
     call("getDishDetails", { dishId: data!.id }),
     (request) => {
       seen = lastToolResult(request);
-      return say("Сейчас креветок нет.");
+      return answer("Сейчас креветок нет.");
     },
   ]);
   await result;
@@ -134,10 +134,7 @@ agentTest("кнопки: только из набора и только на д�
   const { data: shrimp } = await client.from("menu_items").select("id").eq("name", STOP_LIST_DISH).single();
   await guest("что посоветуете?");
   const { result } = run(conversation, [
-    call("suggestActions", {
-      actions: [{ kind: "dish", dishId: shrimp!.id }, { kind: "dish", dishId: dorada!.id }, { kind: "hack" }, { kind: "booking" }],
-    }),
-    say("Советую дораду."),
+    answer("Советую дораду.", [{ kind: "dish", dishId: shrimp!.id }, { kind: "dish", dishId: dorada!.id }, { kind: "hack" }, { kind: "booking" }]),
   ]);
   const turn = await result;
   assert(turn.kind === "reply");
@@ -155,7 +152,7 @@ agentTest("негодные аргументы tool — ошибка модел�
     },
     (request) => {
       assertEquals(lastToolResult(request), { error: "unknown_tool" });
-      return say("Уточните, пожалуйста, какой аллерген.");
+      return answer("Уточните, пожалуйста, какой аллерген.");
     },
   ]);
   const turn = await result;
@@ -171,7 +168,7 @@ agentTest("суточный лимит: исчерпан — модель не �
   // Запасные ответы ходами не считаются.
   await recordMessage(client, conversation.id, "out", "запасной", "text", { aiFallback: "error" });
   await guest("ещё вопрос");
-  const { llm, result } = run(conversation, [say("не должно дойти")], { ...DEFAULT_AI_SETTINGS, dailyTurnLimit: 5 });
+  const { llm, result } = run(conversation, [answer("не должно дойти")], { ...DEFAULT_AI_SETTINGS, dailyTurnLimit: 5 });
   assertEquals(await result, { kind: "fallback", reason: "limit" });
   assertEquals(llm.requests.length, 0);
 });
@@ -183,7 +180,7 @@ agentTest("лимит не исчерпан, пока запасные отве�
   }
   await recordMessage(client, conversation.id, "out", "запасной", "text", { aiFallback: "quota" });
   await guest("ещё вопрос");
-  const { result } = run(conversation, [say("ответ")], { ...DEFAULT_AI_SETTINGS, dailyTurnLimit: 5 });
+  const { result } = run(conversation, [answer("ответ")], { ...DEFAULT_AI_SETTINGS, dailyTurnLimit: 5 });
   assertEquals((await result).kind, "reply");
 });
 
@@ -199,7 +196,7 @@ agentTest("ошибки LLM → запасной ответ с причиной"
   assertEquals(partial.usage?.calls, 1);
 });
 
-agentTest("зацикливание на tools обрывается после лимита раундов", async ({ conversation, say: guest }) => {
+agentTest("зацикливание: модель не отвечает и на последнем раунде — запасной ответ", async ({ conversation, say: guest }) => {
   await guest("вопрос");
   const steps = Array.from({ length: MAX_TOOL_ROUNDS + 1 }, () => call("listFaq"));
   const { llm, result } = run(conversation, steps);
@@ -219,7 +216,7 @@ agentTest("расход хода: токены суммируются по вс�
   await guest("что есть из рыбы?");
   const { result } = run(conversation, [
     { ...call("listMenuCategories"), usage: { input: 1000, output: 20, thoughts: 100 } },
-    { ...say("Дорада и осьминог."), usage: { input: 1500, output: 40, thoughts: 50 } },
+    { ...answer("Дорада и осьминог."), usage: { input: 1500, output: 40, thoughts: 50 } },
   ]);
   const turn = await result;
   assert(turn.kind === "reply");
@@ -228,4 +225,65 @@ agentTest("расход хода: токены суммируются по вс�
     { calls: 2, inputTokens: 2500, outputTokens: 60, thoughtTokens: 150, ms: 0 },
   );
   assert(turn.usage.ms >= 0);
+});
+
+agentTest("reply: ответ только вызовом tool, текст и кнопки одним действием", async ({ conversation, say: guest }) => {
+  await guest("хочу забронировать стол");
+  const { llm, result } = run(conversation, [answer("Нажмите кнопку ниже.", [{ kind: "booking" }])]);
+  const turn = await result;
+  assert(turn.kind === "reply");
+  assertEquals(turn.suggestions, [{ kind: "booking" }]);
+  // Один вызов модели на ход: кнопки не стоят отдельного раунда. reply — не данные, в tools не пишется.
+  assertEquals(turn.usage.calls, 1);
+  assertEquals(turn.tools, []);
+  assertEquals(llm.requests[0].requireToolCall, true);
+  assertEquals(llm.requests[0].allowedTools, undefined);
+});
+
+agentTest("reply вместе с поиском отклоняется: ответ не пишется до результатов", async ({ conversation, say: guest }) => {
+  await guest("есть дорада?");
+  let rejected: unknown;
+  const { result } = run(conversation, [
+    {
+      kind: "tool_calls",
+      calls: [{ name: "searchMenu", args: { query: "дорада" } }, { name: "reply", args: { text: "Дорады нет.", actions: [] } }],
+    },
+    (request) => {
+      const tool = [...request.messages].reverse().find((m): m is Extract<LlmMessage, { role: "tool" }> => m.role === "tool");
+      rejected = tool?.results.find((r) => r.name === "reply")?.result;
+      return answer("Есть дорада на гриле, 24 €.");
+    },
+  ]);
+  const turn = await result;
+  assert(turn.kind === "reply");
+  assertEquals(turn.text, "Есть дорада на гриле, 24 €.");
+  assertEquals((rejected as { error: string }).error, "reply_ignored");
+});
+
+agentTest("reply с пустым текстом — модель отвечает снова, гость не получает пустое сообщение", async ({ conversation, say: guest }) => {
+  await guest("привет");
+  const { llm, result } = run(conversation, [answer("   "), answer("Здравствуйте!")]);
+  const turn = await result;
+  assert(turn.kind === "reply");
+  assertEquals(turn.text, "Здравствуйте!");
+  assertEquals(llm.requests.length, 2);
+});
+
+agentTest("последний раунд: разрешён только reply", async ({ conversation, say: guest }) => {
+  await guest("вопрос");
+  const steps: FakeLlmStep[] = Array.from({ length: MAX_TOOL_ROUNDS }, () => call("listFaq"));
+  steps.push((request) => {
+    assertEquals(request.allowedTools, ["reply"]);
+    return answer("Вот что нашёл.");
+  });
+  const { llm, result } = run(conversation, steps);
+  assertEquals((await result).kind, "reply");
+  assertEquals(llm.requests.length, MAX_TOOL_ROUNDS + 1);
+});
+
+agentTest("простой текст вопреки requireToolCall — ответ без кнопок, не сбой", async ({ conversation, say: guest }) => {
+  await guest("привет");
+  const turn = await run(conversation, [say("Здравствуйте!")]).result;
+  assert(turn.kind === "reply");
+  assertEquals(turn.suggestions, []);
 });

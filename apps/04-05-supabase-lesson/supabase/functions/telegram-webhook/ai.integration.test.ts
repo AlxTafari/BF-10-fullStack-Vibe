@@ -5,7 +5,7 @@
 import { assert, assertEquals } from "@std/assert";
 import { AI_FALLBACK, aiWelcomeText, MAIN_MENU_KEYBOARD, MENU_BOOKING, MENU_MAIN } from "../_shared/content.ts";
 import { buildCallback } from "../_shared/domain/callbackData.ts";
-import { call, createFakeLlm, type FakeLlm, type FakeLlmStep, say } from "../_shared/llm/fakeLlm.ts";
+import { answer, call, createFakeLlm, type FakeLlm, type FakeLlmStep } from "../_shared/llm/fakeLlm.ts";
 import { getRestaurantInfo } from "../_shared/services/restaurantInfo.ts";
 import { createServiceClient } from "../_shared/supabaseClient.ts";
 import { createFakeTelegram, type FakeTelegram } from "./testing/fakeTelegram.ts";
@@ -85,8 +85,7 @@ Deno.test({
     const { data: dorada } = await client.from("menu_items").select("id").eq("name", "Дорада на гриле").single();
     await aiScenario([
       call("searchMenu", { query: "дорада" }),
-      call("suggestActions", { actions: [{ kind: "dish", dishId: dorada!.id }, { kind: "booking" }] }),
-      say("Есть дорада на гриле, 24 €."),
+      answer("Есть дорада на гриле, 24 €.", [{ kind: "dish", dishId: dorada!.id }, { kind: "booking" }]),
     ], async (s) => {
       await s.guest.text("че по рыбе?");
 
@@ -105,7 +104,7 @@ Deno.test({
       const meta = rows[1].meta as Record<string, unknown>;
       assertEquals(
         { ai: meta.ai, model: meta.model, tools: meta.tools, calls: meta.calls },
-        { ai: true, model: "fake-model", tools: ["searchMenu", "suggestActions"], calls: 3 },
+        { ai: true, model: "fake-model", tools: ["searchMenu"], calls: 2 },
       );
       // Расход пишется всегда (у фейка токенов нет — нули), по нему считается статистика.
       assertEquals([meta.inputTokens, meta.outputTokens, meta.thoughtTokens], [0, 0, 0]);
