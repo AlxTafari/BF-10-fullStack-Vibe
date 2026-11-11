@@ -1,0 +1,81 @@
+// Наши типы общения с LLM (S09). Агент и тесты знают только их; SDK Gemini живёт за ними в gemini.ts.
+// Смена провайдера = новая реализация LlmClient, агент не меняется.
+
+/** JSON Schema параметров tool: подмножество, которое понимают и Gemini, и любой другой провайдер. */
+export interface LlmJsonSchema {
+  type: "object" | "string" | "number" | "integer" | "boolean" | "array";
+  description?: string;
+  properties?: Record<string, LlmJsonSchema>;
+  required?: string[];
+  items?: LlmJsonSchema;
+  enum?: string[];
+}
+
+/** Описание tool для модели: имя, когда его звать (description) и форма аргументов. */
+export interface LlmToolSchema {
+  name: string;
+  description: string;
+  parameters: LlmJsonSchema & { type: "object" };
+}
+
+/** Модель просит вызвать tool. args — непроверенные данные от модели: их валидирует реестр tools. */
+export interface LlmToolCall {
+  /** id вызова, если провайдер его выдал: ответ на вызов возвращается с тем же id. */
+  id?: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
+/** Результат tool, который уходит модели обратно. */
+export interface LlmToolResult {
+  callId?: string;
+  name: string;
+  result: Record<string, unknown>;
+}
+
+/**
+ * Одно сообщение контекста.
+ * - user — текст гостя;
+ * - model — ответ модели: текст и/или вызовы tools. providerState — непрозрачные данные провайдера
+ *   (у Gemini 3 — подписи рассуждений), их нужно вернуть модели внутри того же хода без изменений.
+ *   Агент поле не читает и не разбирает; в истории из БД его нет — там только текст;
+ * - tool — результаты вызовов, о которых модель просила в предыдущем сообщении.
+ */
+export type LlmMessage =
+  | { role: "user"; text: string }
+  | { role: "model"; text?: string; toolCalls?: LlmToolCall[]; providerState?: unknown }
+  | { role: "tool"; results: LlmToolResult[] };
+
+export interface LlmRequest {
+  /** Системный промпт: правила поведения, не данные гостя. */
+  system: string;
+  messages: LlmMessage[];
+  tools: LlmToolSchema[];
+  /** Предел одного вызова. Сработал — LlmError("timeout"). */
+  timeoutMs: number;
+}
+
+/** Ответ модели: либо финальный текст, либо просьба вызвать tools (текст рядом возможен, но не обязателен). */
+export type LlmResponse =
+  | { kind: "text"; text: string }
+  | { kind: "tool_calls"; calls: LlmToolCall[]; text?: string; providerState?: unknown };
+
+/**
+ * Почему вызов не удался — агенту важен только класс, не текст ошибки:
+ * quota — исчерпан лимит провайдера (429), timeout — не уложились в timeoutMs,
+ * unavailable — сеть, 5xx, неверный ключ, bad_response — ответ пустой или заблокирован фильтрами.
+ */
+export type LlmErrorKind = "quota" | "timeout" | "unavailable" | "bad_response";
+
+export class LlmError extends Error {
+  constructor(readonly kind: LlmErrorKind, message: string) {
+    super(message);
+    this.name = "LlmError";
+  }
+}
+
+export interface LlmClient {
+  /** Имя модели — пишется в messages.meta, чтобы в админке было видно, кто ответил. */
+  readonly model: string;
+  generate(request: LlmRequest): Promise<LlmResponse>;
+}

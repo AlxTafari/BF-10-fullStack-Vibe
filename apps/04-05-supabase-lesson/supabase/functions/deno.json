@@ -5,6 +5,7 @@
   },
   "imports": {
     "@supabase/supabase-js": "npm:@supabase/supabase-js@2",
-    "@std/assert": "jsr:@std/assert@1"
+    "@std/assert": "jsr:@std/assert@1",
+    "@google/genai": "npm:@google/genai@2.31.0"
   }
 }
