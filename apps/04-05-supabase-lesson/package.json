@@ -15,7 +15,8 @@
     "db:clean:chat-demo": "supabase db query --linked \"delete from conversations where channel = 'telegram' and external_user_id = -1001\"",
     "db:check:retention": "supabase db query --linked -f supabase/dev-retention-check.sql",
     "link": "supabase link",
-    "check:layers": "bash scripts/check-layers.sh"
+    "check:layers": "bash scripts/check-layers.sh",
+    "eval:ai": "deno run --allow-env --allow-net --allow-read --env-file=.env --config supabase/functions/deno.json supabase/scripts/eval-ai-phrases.ts"
   },
   "type": "commonjs",
   "devDependencies": {
