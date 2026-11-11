@@ -4,7 +4,8 @@
 //  2. RLS: чужой менеджер, посторонний и аноним не читают ни диалоги, ни сообщения, ни через RPC;
 //  3. запись клиентом запрещена (insert / update / delete); единственная запись — mark_conversation_read;
 //  4. триггер последнего сообщения (в т.ч. не по порядку), unread_count, потолок 100, монотонность отметки;
-//  5. Realtime: свой менеджер получает INSERT сообщения и UPDATE диалога, чужой — нет; формат метки = как у RPC.
+//  5. Realtime: свой менеджер получает INSERT сообщения и UPDATE диалога, чужой — нет; формат метки = как у RPC;
+//  6. AI-слой (S09): пометка угрозы в списке, «Разобрано» (resolve_conversation_flag), статистика ai_usage_daily.
 // Запуск: pnpm test (нужны SUPABASE_* в .env корня; без них файл пропускается). Данные свои, чистятся в afterAll.
 import { type RealtimeChannel, type SupabaseClient, createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -369,5 +370,63 @@ describe.skipIf(!enabled)("Чат: курсор, RLS, триггер, непро
       expect(foreign.filter((e) => e.table === "messages")).toEqual([]);
       expect(foreign.filter((e) => e.table === "conversations" && e.row.id === conv)).toEqual([]);
     }, 150_000); // прогрев до 60 с + ожидание до 45 с
+  });
+
+  describe("AI-слой: пометка угрозы и статистика (S09)", () => {
+    it("пометка видна в списке; «Разобрано» снимает её; чужой менеджер не снимает (not_found)", async () => {
+      const conv = await conversation(restaurantA);
+      await addMessages(conv, [{ direction: "in", text: "угроза", created_at: "2026-05-01T10:00:00+00:00" }]);
+      const flagged = await service
+        .from("conversations")
+        .update({ flagged_at: "2026-05-01T10:00:01+00:00", flag_reason: "Угроза персоналу" })
+        .eq("id", conv);
+      expect(flagged.error).toBeNull();
+
+      const list = await managerA.rpc("list_conversations_page", { p_before_at: nul, p_before_id: nul, p_limit: 101 });
+      const row = (list.data as { id: string; flagged_at: string | null; flag_reason: string | null }[] | null)?.find((r) => r.id === conv);
+      expect(row?.flag_reason).toBe("Угроза персоналу");
+      expect(row?.flagged_at).not.toBeNull();
+
+      const foreign = await managerB.rpc("resolve_conversation_flag", { p_conversation_id: conv });
+      expect(foreign.error?.message).toBe("not_found");
+      expect((await anon.rpc("resolve_conversation_flag", { p_conversation_id: conv })).error).not.toBeNull();
+      expect((await conversationRow(conv)).flag_reason).toBe("Угроза персоналу");
+
+      expect((await managerA.rpc("resolve_conversation_flag", { p_conversation_id: conv })).error).toBeNull();
+      const after = await conversationRow(conv);
+      expect(after.flagged_at).toBeNull();
+      expect(after.flag_reason).toBeNull();
+      // Повторное нажатие (вторая вкладка) — не ошибка.
+      expect((await managerA.rpc("resolve_conversation_flag", { p_conversation_id: conv })).error).toBeNull();
+    });
+
+    it("ai_usage_daily: суммы по дню (в зоне ресторана) и модели, запасные ответы по причинам; чужой ресторан не виден", async () => {
+      await service.from("restaurants").update({ timezone: "Europe/Athens" }).eq("id", restaurantA);
+      const conv = await conversation(restaurantA);
+      const ai = (inputTokens: number, ms: number) => ({ ai: true, model: "m1", tools: [], calls: 2, inputTokens, outputTokens: 10, thoughtTokens: 5, ms });
+      const res = await service.from("messages").insert([
+        // 23:30 UTC 2 июня — уже 3 июня в Афинах (UTC+3): день считается по зоне ресторана.
+        { conversation_id: conv, direction: "out", kind: "text", text: "a1", created_at: "2026-06-02T23:30:00+00:00", meta: ai(100, 1000) },
+        { conversation_id: conv, direction: "out", kind: "text", text: "a2", created_at: "2026-06-03T10:00:00+00:00", meta: ai(300, 3000) },
+        { conversation_id: conv, direction: "out", kind: "text", text: "f1", created_at: "2026-06-03T11:00:00+00:00", meta: { aiFallback: "limit" } },
+        { conversation_id: conv, direction: "out", kind: "text", text: "f2", created_at: "2026-06-03T12:00:00+00:00", meta: { aiFallback: "timeout", model: "m1", calls: 1, inputTokens: 50, outputTokens: 0, thoughtTokens: 0, ms: 9000 } },
+        { conversation_id: conv, direction: "out", kind: "text", text: "plain", created_at: "2026-06-03T13:00:00+00:00" },
+      ]);
+      expect(res.error).toBeNull();
+
+      const range = { p_from: "2026-06-01T00:00:00+00:00", p_to: "2026-06-05T00:00:00+00:00" };
+      const mine = await managerA.rpc("ai_usage_daily", range);
+      expect(mine.error).toBeNull();
+      const rows = (mine.data ?? []) as { model: string }[];
+      const m1 = rows.find((r) => r.model === "m1");
+      expect(m1).toMatchObject({ day: "2026-06-03", turns: 2, calls: 5, input_tokens: 450, output_tokens: 20, thought_tokens: 10, ms_total: 4000, fallback_timeout: 1 });
+      // Запасной ответ без модели — отдельной строкой с model = ''.
+      expect(rows.find((r) => r.model === "")).toMatchObject({ day: "2026-06-03", turns: 0, fallback_limit: 1 });
+
+      expect((await managerB.rpc("ai_usage_daily", range)).data).toEqual([]);
+      expect((await anon.rpc("ai_usage_daily", range)).error).not.toBeNull();
+      const tooWide = await managerA.rpc("ai_usage_daily", { p_from: "2020-01-01T00:00:00+00:00", p_to: "2026-06-05T00:00:00+00:00" });
+      expect(tooWide.error?.message).toBe("invalid_range");
+    });
   });
 });

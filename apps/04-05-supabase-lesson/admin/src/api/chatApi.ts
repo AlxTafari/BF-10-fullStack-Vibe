@@ -62,7 +62,7 @@ export const chatApi = baseApi.injectEndpoints({
       queryFn: async (id) => {
         const { data, error } = await supabase
           .from("conversations")
-          .select("id, display_name, channel, created_at, last_message_at, last_message_preview, last_message_direction, manager_last_read_at")
+          .select("id, display_name, channel, created_at, last_message_at, last_message_preview, last_message_direction, manager_last_read_at, flagged_at, flag_reason")
           .eq("id", id)
           .maybeSingle();
         if (error) return { error: toApiError(error) };
@@ -147,6 +147,33 @@ export const chatApi = baseApi.injectEndpoints({
         }
       },
     }),
+
+    // «Разобрано» (S09): снимает пометку угрозы. Пессимистично: бейдж гаснет после ответа БД, событие Realtime
+    // потом придёт и станет no-op. Шапка (getConversation) обновляется тут же — по прямой ссылке списка может не быть.
+    resolveConversationFlag: build.mutation<null, string>({
+      queryFn: async (conversationId) => {
+        const { error } = await supabase.rpc("resolve_conversation_flag", { p_conversation_id: conversationId });
+        return error ? { error: toApiError(error) } : { data: null };
+      },
+      onQueryStarted: async (conversationId, { dispatch, getState, queryFulfilled }) => {
+        try {
+          await queryFulfilled;
+        } catch {
+          return;
+        }
+        const cached = chatApi.endpoints.getConversations.select({ cursor: null })(getState() as RootState).data;
+        const row = cached?.rows.find((r) => r.id === conversationId);
+        if (row) mergeConversationEvent(dispatch, { ...toEventRow(row), flagged_at: null, flag_reason: null });
+        dispatch(
+          chatApi.util.updateQueryData("getConversation", conversationId, (draft) => {
+            if (draft) {
+              draft.flagged_at = null;
+              draft.flag_reason = null;
+            }
+          }),
+        );
+      },
+    }),
   }),
 });
 
@@ -157,6 +184,7 @@ export const {
   useGetUnreadCountQuery,
   useGetConversationRequestsQuery,
   useMarkConversationReadMutation,
+  useResolveConversationFlagMutation,
 } = chatApi;
 
 // ---------------------------------------------------------------- подгрузка и вливание событий

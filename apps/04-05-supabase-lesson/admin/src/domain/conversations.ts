@@ -13,6 +13,9 @@ export interface ConversationRow {
   manager_last_read_at: string | null;
   /** Непрочитанные входящие, потолок 100. */
   unread_count: number;
+  /** Пометка угрозы (S09, ставит агент tool'ом flagThreat): когда и почему. Оба null — не помечен. */
+  flagged_at: string | null;
+  flag_reason: string | null;
 }
 
 /** Что из строки conversations нужно списку (в событии Realtime приходит ещё state, chat_id — их здесь нет). */
@@ -32,6 +35,8 @@ export function toEventRow(row: ConversationRow): ConversationEventRow {
     last_message_preview: row.last_message_preview,
     last_message_direction: row.last_message_direction,
     manager_last_read_at: row.manager_last_read_at,
+    flagged_at: row.flagged_at,
+    flag_reason: row.flag_reason,
   };
 }
 
@@ -61,8 +66,9 @@ export interface ConversationChange {
  * Влить событие `conversations` (INSERT / UPDATE) в кэш списка.
  *  - диалог без сообщений (last_message_at = null) в список не попадает; когда бот запишет первое сообщение,
  *    триггер пришлёт UPDATE, и диалог войдёт как новый;
- *  - UPDATE, в котором не изменилось ни последнее сообщение, ни превью, ни отметка прочтения (это
- *    setConversationState бота на каждом шаге сценария), игнорируется — список не перерисовывается и не дёргается;
+ *  - UPDATE, в котором не изменилось ни последнее сообщение, ни превью, ни отметка прочтения, ни пометка угрозы
+ *    (это setConversationState бота на каждом шаге сценария), игнорируется — список не перерисовывается и не дёргается;
+ *  - пометка угрозы берётся из события как есть: её ставит бот и снимает менеджер, событие несёт текущее значение;
  *  - запоздавшее событие (last_message_at старее кэша) последнее сообщение не откатывает; отметка прочтения только растёт;
  *  - отметка ≥ last_message_at (прочитали в другой вкладке) → unread_count = 0;
  *  - порядок и размер списка — как у запроса; события за пределами загруженной части списка не вставляются
@@ -93,7 +99,8 @@ export function applyConversationEvent(list: Page<ConversationRow>, event: Conve
   const lastChanged = newer || (same && (event.last_message_preview !== existing.last_message_preview
     || event.last_message_direction !== existing.last_message_direction));
   const readChanged = !sameStamp(read, existing.manager_last_read_at);
-  if (!lastChanged && !readChanged) return unchanged;
+  const flagChanged = !sameStamp(event.flagged_at, existing.flagged_at) || event.flag_reason !== existing.flag_reason;
+  if (!lastChanged && !readChanged && !flagChanged) return unchanged;
 
   const next: ConversationRow = {
     ...existing,
@@ -101,6 +108,8 @@ export function applyConversationEvent(list: Page<ConversationRow>, event: Conve
     last_message_preview: newer || same ? event.last_message_preview : existing.last_message_preview,
     last_message_direction: newer || same ? event.last_message_direction : existing.last_message_direction,
     manager_last_read_at: read,
+    flagged_at: event.flagged_at,
+    flag_reason: event.flag_reason,
   };
 
   let needsRefresh = false;

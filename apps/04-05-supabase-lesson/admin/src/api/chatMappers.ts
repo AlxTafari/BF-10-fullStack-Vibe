@@ -8,13 +8,31 @@ const str = (value: unknown): value is string => typeof value === "string";
 const strOrNull = (value: unknown): value is string | null => value === null || typeof value === "string";
 const direction = (value: unknown): value is "in" | "out" => value === "in" || value === "out";
 
+/**
+ * Пометка угрозы (S09). Колонки нет (старый ответ) — считаем «не помечен», а не отбрасываем строку: список
+ * диалогов не должен пропасть из-за пометки. Неверный тип — строка отбрасывается, как и при других полях.
+ */
+function toFlag(row: Record<string, unknown>): { flagged_at: string | null; flag_reason: string | null } | null {
+  const flagged_at = row.flagged_at ?? null;
+  const flag_reason = row.flag_reason ?? null;
+  if (!strOrNull(flagged_at) || !strOrNull(flag_reason)) return null;
+  return { flagged_at, flag_reason };
+}
+
+/** Пометка ответа агента из messages.meta (S09): ai — ответил агент, fallback — агент не ответил, ушёл запасной ответ. */
+function toAiMark(meta: unknown): Message["ai"] {
+  if (!isRecord(meta)) return null;
+  if (meta.ai === true) return "reply";
+  return typeof meta.aiFallback === "string" ? "fallback" : null;
+}
+
 /** Строка messages (ответ RPC или payload Realtime INSERT) → Message. */
 export function toMessage(row: unknown): Message | null {
   if (!isRecord(row)) return null;
   const { id, conversation_id, direction: dir, kind, text, created_at } = row;
   if (!str(id) || !str(conversation_id) || !direction(dir) || !str(text) || !str(created_at)) return null;
   if (kind !== "text" && kind !== "button" && kind !== "search") return null;
-  return { id, conversation_id, direction: dir, kind, text, created_at };
+  return { id, conversation_id, direction: dir, kind, text, created_at, ai: toAiMark(row.meta) };
 }
 
 /** Строка ответа list_conversations_page → ConversationRow. */
@@ -24,7 +42,9 @@ export function toConversationRow(row: unknown): ConversationRow | null {
   if (!str(id) || !strOrNull(display_name) || !str(channel) || !str(created_at) || !str(last_message_at)) return null;
   if (!strOrNull(last_message_preview) || !strOrNull(manager_last_read_at) || typeof unread_count !== "number") return null;
   if (last_message_direction !== null && !direction(last_message_direction)) return null;
-  return { id, display_name, channel, created_at, last_message_at, last_message_preview, last_message_direction, manager_last_read_at, unread_count };
+  const flag = toFlag(row);
+  if (!flag) return null;
+  return { id, display_name, channel, created_at, last_message_at, last_message_preview, last_message_direction, manager_last_read_at, unread_count, ...flag };
 }
 
 /** Payload Realtime по conversations → то, что нужно списку. state / chat_id / external_user_id отбрасываются. */
@@ -34,5 +54,7 @@ export function toConversationEventRow(row: unknown): ConversationEventRow | nul
   if (!str(id) || !strOrNull(display_name) || !str(channel) || !str(created_at) || !strOrNull(last_message_at)) return null;
   if (!strOrNull(last_message_preview) || !strOrNull(manager_last_read_at)) return null;
   if (last_message_direction !== null && !direction(last_message_direction)) return null;
-  return { id, display_name, channel, created_at, last_message_at, last_message_preview, last_message_direction, manager_last_read_at };
+  const flag = toFlag(row);
+  if (!flag) return null;
+  return { id, display_name, channel, created_at, last_message_at, last_message_preview, last_message_direction, manager_last_read_at, ...flag };
 }

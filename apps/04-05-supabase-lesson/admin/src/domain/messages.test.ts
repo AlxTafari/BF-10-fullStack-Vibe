@@ -10,6 +10,7 @@ const msg = (n: number, over: Partial<Message> = {}): Message => ({
   kind: "text",
   text: `текст ${n}`,
   created_at: `2026-10-18T12:00:${String(n).padStart(2, "0")}+00:00`,
+  ai: null,
   ...over,
 });
 /** Кэш «новые → старые» из сообщений с номерами from…to (from ≥ to). */

@@ -92,7 +92,15 @@ export function ConversationList({ activeId, timeZone }: { activeId: string | un
                 className={cn("block border-b px-3 py-2.5 hover:bg-accent", active && "bg-accent")}
               >
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className={cn("truncate text-sm", unread > 0 ? "font-semibold" : "font-medium")}>{guestName(c)}</span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className={cn("truncate text-sm", unread > 0 ? "font-semibold" : "font-medium")}>{guestName(c)}</span>
+                    {/* Пометка угрозы (S09): причина — в подсказке и в шапке чата. Текст причины пишет модель — выводим как текст. */}
+                    {c.flagged_at && (
+                      <Badge variant="destructive" className="shrink-0" title={c.flag_reason ?? undefined}>
+                        угроза
+                      </Badge>
+                    )}
+                  </span>
                   <span className="shrink-0 text-xs text-muted-foreground">{listTimeLabel(c.last_message_at, now, timeZone)}</span>
                 </div>
                 <div className="mt-0.5 flex items-center justify-between gap-2">

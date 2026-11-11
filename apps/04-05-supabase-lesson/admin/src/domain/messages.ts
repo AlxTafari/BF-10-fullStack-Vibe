@@ -14,6 +14,8 @@ export interface Message {
   kind: "text" | "button" | "search";
   text: string;
   created_at: string;
+  /** Из messages.meta (S09): reply — ответ AI-агента, fallback — агент не ответил, ушёл запасной ответ; null — обычное. */
+  ai: "reply" | "fallback" | null;
 }
 
 export const keyOfMessage = (m: Message): Cursor => ({ at: m.created_at, id: m.id });

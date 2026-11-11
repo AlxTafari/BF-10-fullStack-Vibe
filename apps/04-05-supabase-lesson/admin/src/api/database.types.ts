@@ -552,6 +552,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      ai_usage_daily: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          calls: number
+          day: string
+          fallback_error: number
+          fallback_limit: number
+          fallback_quota: number
+          fallback_timeout: number
+          input_tokens: number
+          ms_total: number
+          model: string
+          output_tokens: number
+          thought_tokens: number
+          turns: number
+        }[]
+      }
       count_unread_conversations: { Args: never; Returns: number }
       eu_allergen_codes: { Args: never; Returns: string[] }
       get_messages_page: {
@@ -584,6 +601,8 @@ export type Database = {
           channel: string
           created_at: string
           display_name: string
+          flag_reason: string
+          flagged_at: string
           id: string
           last_message_at: string
           last_message_direction: string
@@ -594,6 +613,10 @@ export type Database = {
       }
       mark_conversation_read: {
         Args: { p_conversation_id: string; p_up_to: string }
+        Returns: undefined
+      }
+      resolve_conversation_flag: {
+        Args: { p_conversation_id: string }
         Returns: undefined
       }
       set_booking_status: {

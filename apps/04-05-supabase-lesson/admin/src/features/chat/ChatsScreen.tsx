@@ -1,8 +1,9 @@
 import { skipToken } from "@reduxjs/toolkit/query";
 import { Link, useParams } from "@tanstack/react-router";
 import { useGetMeQuery } from "@/api/authApi";
-import { useGetConversationQuery, useGetConversationsQuery } from "@/api/chatApi";
+import { useGetConversationQuery, useGetConversationsQuery, useResolveConversationFlagMutation } from "@/api/chatApi";
 import { useGetRestaurantQuery } from "@/api/restaurantApi";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatInZone } from "@/domain/time";
 import { LoadError } from "@/features/common/LoadError";
@@ -72,6 +73,8 @@ function ChatView({ conversationId, timeZone }: { conversationId: string; timeZo
   if (!conversation) return <NotFound />;
 
   const readAt = listRow ? listRow.manager_last_read_at : conversation.manager_last_read_at;
+  // Пометка угрозы — так же: живая из списка, шапка — запасной источник.
+  const flag = listRow ?? conversation;
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -85,6 +88,10 @@ function ChatView({ conversationId, timeZone }: { conversationId: string; timeZo
             {CHANNEL_LABEL[conversation.channel] ?? conversation.channel} · диалог начат {formatInZone(conversation.created_at, timeZone)}
           </p>
         </header>
+
+        {flag.flagged_at && (
+          <ThreatBanner conversationId={conversationId} reason={flag.flag_reason} at={flag.flagged_at} timeZone={timeZone} />
+        )}
 
         {/* Узкий экран: заявки — сворачиваемая секция над лентой. */}
         <details className="border-b px-4 py-2 xl:hidden">
@@ -101,6 +108,26 @@ function ChatView({ conversationId, timeZone }: { conversationId: string; timeZo
         <h2 className="text-sm font-semibold">Заявки гостя</h2>
         <GuestRequestsPanel conversationId={conversationId} timeZone={timeZone} />
       </aside>
+    </div>
+  );
+}
+
+/**
+ * Пометка угрозы (S09): агент пометил диалог tool'ом flagThreat. Причину пишет модель — выводится только как текст.
+ * «Разобрано» снимает пометку (RPC resolve_conversation_flag); переписка остаётся.
+ */
+function ThreatBanner({ conversationId, reason, at, timeZone }: { conversationId: string; reason: string | null; at: string; timeZone: string }) {
+  const [resolve, { isLoading, error }] = useResolveConversationFlagMutation();
+  return (
+    <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm">
+      <p className="min-w-0 flex-1 break-words">
+        <span className="font-semibold text-destructive">Угроза</span> · {formatInZone(at, timeZone)}
+        {reason && <span className="block text-muted-foreground">{reason}</span>}
+        {error && <span role="alert" className="block text-destructive">Не удалось снять пометку: {(error as { message?: string }).message ?? "ошибка"}</span>}
+      </p>
+      <Button size="sm" variant="outline" disabled={isLoading} onClick={() => void resolve(conversationId)}>
+        {isLoading ? "Снимаем…" : "Разобрано"}
+      </Button>
     </div>
   );
 }

@@ -12,6 +12,8 @@ const row = (n: number, over: Partial<ConversationRow> = {}): ConversationRow =>
   last_message_direction: "in",
   manager_last_read_at: `2026-10-18T12:00:${String(n).padStart(2, "0")}+00:00`,
   unread_count: 0,
+  flagged_at: null,
+  flag_reason: null,
   ...over,
 });
 /** Событие по строке: как её присылает Realtime (без unread_count). */
@@ -106,5 +108,23 @@ describe("applyConversationEvent", () => {
   it("список загружен целиком → диалог любого возраста входит на своё место", () => {
     const l = list([row(9), row(8)], false);
     expect(ids(applyConversationEvent(l, event(row(1))).list)).toEqual(["c-9", "c-8", "c-1"]);
+  });
+});
+
+describe("applyConversationEvent: пометка угрозы (S09)", () => {
+  it("пометка из события попадает в строку, без перечитывания счётчика", () => {
+    const l = list([row(5), row(4)]);
+    const result = applyConversationEvent(l, event(row(5), { flagged_at: "2026-10-18T12:00:06+00:00", flag_reason: "угроза" }));
+    expect(result.list).not.toBe(l);
+    expect(result.list.rows[0]).toMatchObject({ id: "c-5", flagged_at: "2026-10-18T12:00:06+00:00", flag_reason: "угроза" });
+    expect(result.needsRefresh).toBe(false);
+  });
+
+  it("«Разобрано» (оба null) снимает пометку; повтор того же события — игнор", () => {
+    const l = list([row(5, { flagged_at: "2026-10-18T12:00:06+00:00", flag_reason: "угроза" })]);
+    const cleared = applyConversationEvent(l, event(row(5)));
+    expect(cleared.list.rows[0]?.flagged_at).toBeNull();
+    expect(cleared.list.rows[0]?.flag_reason).toBeNull();
+    expect(applyConversationEvent(cleared.list, event(row(5))).list).toBe(cleared.list);
   });
 });

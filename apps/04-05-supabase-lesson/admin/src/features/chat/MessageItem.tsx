@@ -32,6 +32,12 @@ export function MessageItem({ message, timeZone }: { message: Message; timeZone:
         )}
       >
         {isSearch && <p className="mb-1 text-[10px] uppercase tracking-wide">Поиск по меню</p>}
+        {/* Пометка AI (S09, из messages.meta): ответ агента или запасной ответ, когда агент не ответил. */}
+        {message.ai && (
+          <p className="mb-1 text-[10px] uppercase tracking-wide text-primary-foreground/70">
+            {message.ai === "reply" ? "AI-помощник" : "AI не ответил · запасной ответ"}
+          </p>
+        )}
         {/* pre-wrap: боты пишут многострочно; break-words: длинное слово без пробелов не ломает вёрстку */}
         <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.text}</p>
         <p className={cn("mt-1 text-right text-[10px]", fromGuest || isSearch ? "text-muted-foreground" : "text-primary-foreground/70")}>
