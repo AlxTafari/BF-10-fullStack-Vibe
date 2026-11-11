@@ -3,6 +3,7 @@ import { useGetMeQuery } from "@/api/authApi";
 import { useGetRestaurantQuery } from "@/api/restaurantApi";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadError } from "@/features/common/LoadError";
+import { AiSettingsCard } from "./AiSettingsCard";
 import { RestaurantForm } from "./RestaurantForm";
 
 export function RestaurantScreen() {
@@ -17,6 +18,7 @@ export function RestaurantScreen() {
       {isLoading && <Skeleton className="h-96 w-full max-w-2xl" />}
       {error && <LoadError error={error} onRetry={refetch} />}
       {data && restaurantId && <RestaurantForm restaurantId={restaurantId} restaurant={data} />}
+      {restaurantId && <AiSettingsCard restaurantId={restaurantId} />}
     </section>
   );
 }
