@@ -6,6 +6,7 @@ import { formatBookingShort, formatGuestRequestLine, type MyBooking, type MyGues
 import { addDays } from "./domain/zonedTime.ts";
 import { formatDate, GUEST_REQUEST_KIND_LABEL } from "./domain/requestSummaries.ts";
 import { formatPrice } from "./domain/formatPrice.ts";
+import type { AgentSuggestion } from "./services/ai/agent.ts";
 import type { FaqListItem } from "./services/faq.ts";
 import type { DishSummary } from "./services/menu.ts";
 import type { InlineKeyboard } from "./telegram/types.ts";
@@ -31,7 +32,7 @@ export const MAIN_MENU_KEYBOARD: InlineKeyboard = [
 
 export const MENU_PROMPT = "Выберите, что вас интересует:";
 
-// Свободный текст = поиск блюда по названию (S02).
+// Свободный текст = поиск блюда по названию (S02), если AI ресторана выключен; иначе текст идёт агенту (S09).
 // Антиспам (S06c). Тексты не цитируют сообщение гостя: оно может быть длинным и содержать личные данные.
 export const RATE_LIMIT_WARNING = "Слишком много сообщений. Подождите немного и попробуйте снова.";
 export const TEXT_TOO_LONG = "Сообщение слишком длинное — максимум 500 символов. Напишите короче.";
@@ -109,6 +110,39 @@ export function dishCardKeyboard(category: { id: string; name: string | null } |
     ? { text: `← В «${category.name ?? "категорию"}»`, callback_data: buildCallback("category", category.id) }
     : BACK_TO_CATEGORIES;
   return [[back], [HOME_BUTTON]];
+}
+
+// ---------------------------------------------------------------- AI-помощник (S09)
+
+/**
+ * Приветствие при включённом AI: гость один раз узнаёт, что говорит с AI (§4.18, EU AI Act ст. 50), и что
+ * можно просто писать. «Можно голосовым» добавится с голосом (сессия 4).
+ */
+export function aiWelcomeText(restaurantName: string): string {
+  return `Здравствуйте! Я AI-помощник ресторана «${restaurantName}». Спросите что угодно: меню, аллергены, бронь. Или выберите ниже 👇`;
+}
+
+/** Агент не ответил (сбой, таймаут, квота, суточный лимит). Причину гостю не показываем. */
+export const AI_FALLBACK = "Сейчас мне удобнее помочь кнопками — выберите, что нужно 👇";
+
+// Подписи кнопок под ответом агента — те же, что в главном меню: гость узнаёт знакомые действия.
+const SUGGESTION_BUTTONS = {
+  booking: { text: "📅 Забронировать стол", callback_data: MENU_BOOKING },
+  menu: { text: "🍽 Меню", callback_data: MENU_MENU },
+  my_requests: { text: "📋 Мои заявки", callback_data: MENU_MY },
+  manager: { text: "💬 Написать менеджеру", callback_data: MENU_MANAGER },
+  main_menu: HOME_BUTTON,
+} as const;
+
+/**
+ * Кнопки под ответом агента (§4.17): по одной в ряд; «Главное меню» внизу всегда — выход есть при любом
+ * выборе модели. Агент ничего не выбрал — только «Главное меню».
+ */
+export function suggestionsKeyboard(suggestions: AgentSuggestion[]): InlineKeyboard {
+  const rows: InlineKeyboard = suggestions
+    .filter((s) => s.kind !== "main_menu")
+    .map((s) => [s.kind === "dish" ? { text: `🍽 ${s.name}`, callback_data: buildCallback("dish", s.dishId) } : SUGGESTION_BUTTONS[s.kind]]);
+  return [...rows, [HOME_BUTTON]];
 }
 
 // ---------------------------------------------------------------- сценарии брони и обращений (S03)

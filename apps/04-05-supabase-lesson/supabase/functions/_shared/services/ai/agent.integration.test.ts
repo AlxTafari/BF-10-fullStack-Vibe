@@ -138,7 +138,7 @@ agentTest("кнопки: только из набора и только на д�
   ]);
   const turn = await result;
   assert(turn.kind === "reply");
-  assertEquals(turn.suggestions, [{ kind: "dish", dishId: dorada!.id }, { kind: "booking" }]);
+  assertEquals(turn.suggestions, [{ kind: "dish", dishId: dorada!.id, name: "Дорада на гриле" }, { kind: "booking" }]);
 });
 
 agentTest("негодные аргументы tool — ошибка модели, не падение хода", async ({ conversation, say: guest }) => {

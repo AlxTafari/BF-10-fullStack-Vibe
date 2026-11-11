@@ -104,6 +104,9 @@ export function createFakeTelegram(): FakeTelegram {
       existing(chatId, messageId, "deleteMessage");
       chat(chatId).delete(messageId);
     },
+    async sendChatAction(chatId, _action) {
+      record({ method: "sendChatAction", chatId, messageId: null, text: null, keyboard: null });
+    },
     async answerCallbackQuery(_callbackQueryId, text) {
       record({ method: "answerCallbackQuery", chatId: null, messageId: null, text: text ?? null, keyboard: null });
     },

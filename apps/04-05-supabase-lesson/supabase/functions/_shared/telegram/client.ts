@@ -71,6 +71,10 @@ export function createTelegramClient(botToken: string) {
     async deleteMessage(chatId: number, messageId: number): Promise<void> {
       await call("deleteMessage", { chat_id: chatId, message_id: messageId });
     },
+    /** «Печатает…» в шапке чата: держится ~5 с или до следующего сообщения бота. */
+    async sendChatAction(chatId: number, action: "typing"): Promise<void> {
+      await call("sendChatAction", { chat_id: chatId, action });
+    },
     async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
       await call("answerCallbackQuery", { callback_query_id: callbackQueryId, text });
     },

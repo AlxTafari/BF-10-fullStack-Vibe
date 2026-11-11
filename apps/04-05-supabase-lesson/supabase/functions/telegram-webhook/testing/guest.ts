@@ -4,6 +4,7 @@
 // Отрицательные id — граница между тестом и реальностью: у настоящих пользователей Telegram и у настоящих апдейтов
 // id положительные, поэтому cleanup() не может задеть живого гостя или чужой апдейт.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { LlmClient } from "../../_shared/services/ai/agent.ts";
 import type { InlineKeyboardButton, TelegramUpdate } from "../../_shared/telegram/types.ts";
 import { routeUpdate } from "../router.ts";
 import type { FakeMessage, FakeTelegram } from "./fakeTelegram.ts";
@@ -35,7 +36,8 @@ function negativeId(): number {
 export function createTestGuest(
   client: SupabaseClient,
   tg: FakeTelegram,
-  options: { username?: string; firstName?: string } = {},
+  // llm — фейковая модель для сценариев AI (S09); без неё свободный текст идёт в поиск блюда, как до S09.
+  options: { username?: string; firstName?: string; llm?: LlmClient } = {},
 ): TestGuest {
   const id = negativeId();
   const from = { id, is_bot: false, first_name: options.firstName ?? "Тест", username: options.username };
@@ -51,7 +53,7 @@ export function createTestGuest(
     const update = build(updateId);
     sent.set(updateId, update);
     updateIds.push(updateId);
-    await routeUpdate({ client, tg }, update);
+    await routeUpdate({ client, tg, llm: options.llm ?? null }, update);
     return updateId;
   }
 
@@ -98,7 +100,7 @@ export function createTestGuest(
     async redeliver(updateId) {
       const update = sent.get(updateId);
       if (!update) throw new Error(`апдейт ${updateId} этим гостем не отправлялся`);
-      await routeUpdate({ client, tg }, update);
+      await routeUpdate({ client, tg, llm: options.llm ?? null }, update);
     },
     screen,
     messages: () => tg.messages(id),

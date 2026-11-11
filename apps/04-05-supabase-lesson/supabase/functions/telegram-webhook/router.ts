@@ -12,6 +12,8 @@ import {
 } from "../_shared/content.ts";
 import { isFlowCallback, parseBookingCallback, parseCallback, parseFlowCallback } from "../_shared/domain/callbackData.ts";
 import { countsTowardRateLimit, isTooLong, RATE_LIMIT_WINDOW_SECONDS } from "../_shared/domain/antispam.ts";
+import type { LlmClient } from "../_shared/services/ai/agent.ts";
+import { getAiSettings } from "../_shared/services/aiSettings.ts";
 import { checkGuestRate } from "../_shared/services/antispam.ts";
 import { openConversation } from "../_shared/services/conversations.ts";
 import { getFlowState } from "../_shared/services/flow.ts";
@@ -19,6 +21,7 @@ import { registerUpdate } from "../_shared/services/updates.ts";
 import type { TelegramClient } from "../_shared/telegram/client.ts";
 import type { TelegramCallbackQuery, TelegramMessage, TelegramUpdate } from "../_shared/telegram/types.ts";
 import type { HandlerContext } from "./context.ts";
+import { handleAiText } from "./handlers/ai.ts";
 import { handleFaqAnswer, handleFaqList } from "./handlers/faq.ts";
 import {
   handleCancelCommand,
@@ -40,6 +43,8 @@ const CANCEL_COMMAND = /^\/cancel(@\S+)?$/i;
 interface Deps {
   client: SupabaseClient;
   tg: TelegramClient;
+  /** Модель для агента (S09). null — Gemini не настроен: свободный текст идёт в поиск блюда, как до S09. */
+  llm: LlmClient | null;
 }
 
 export async function routeUpdate(deps: Deps, update: TelegramUpdate): Promise<void> {
@@ -80,6 +85,7 @@ async function buildContext(
     conversation,
     isPrivate: chatType === "private",
     callbackMessageId,
+    llm: deps.llm,
   };
 }
 
@@ -106,10 +112,10 @@ async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void
   if (!ctx) return;
 
   const text = message.text?.trim() ?? "";
-  // Живой сценарий забирает текст себе (имя, число гостей…); иначе свободный текст — поиск блюда (S02).
+  // Живой сценарий забирает текст себе (имя, число гостей…); иначе свободный текст — агенту (S09) или поиск блюда (S02).
   const flowState = getFlowState(ctx.conversation);
 
-  // В лимит идёт только свободный текст вне сценария (поиск блюда): команды и шаги брони — легитимный быстрый ввод.
+  // В лимит идёт только свободный текст вне сценария (агент, поиск): команды и шаги брони — легитимный быстрый ввод.
   const isCommand = START_COMMAND.test(text) || CANCEL_COMMAND.test(text);
   if (!(await passesRateLimit(deps, ctx, countsTowardRateLimit({ isCommand, isCallback: false, hasLiveFlow: !!flowState })))) return;
   if (isTooLong(text)) {
@@ -118,8 +124,16 @@ async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void
     return;
   }
 
+  // Свободный текст вне сценария: AI ресторана включён и модель настроена — агенту, иначе поиск блюда (до S09).
+  // Пустой текст (стикер, фото) агенту не отдаём: поиск ответит подсказкой. Настройки читаем только здесь —
+  // команды и шаги сценария лишнего запроса не делают.
+  const isFreeText = !isCommand && !flowState;
+  const aiSettings = isFreeText && text && deps.llm ? await getAiSettings(deps.client, ctx.conversation.restaurant_id) : null;
+  const toAgent = aiSettings?.aiEnabled === true;
+
   // kind определяем до записи: текст, ушедший в поиск блюда, — шум с коротким сроком хранения (S06c).
-  await logIncoming(ctx, text, !isCommand && !flowState ? "search" : "text");
+  // Реплика агенту — разговор по существу ('text'): её видит окно истории агента и превью в админке.
+  await logIncoming(ctx, text, isFreeText && !toAgent ? "search" : "text");
 
   // /start и /cancel сбрасывают сценарий в любой момент.
   if (START_COMMAND.test(text)) {
@@ -134,6 +148,10 @@ async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void
 
   if (flowState) {
     await handleFlowText(ctx, flowState, text);
+    return;
+  }
+  if (toAgent && aiSettings) {
+    await handleAiText(ctx, aiSettings);
     return;
   }
   await handleSearch(ctx, text);

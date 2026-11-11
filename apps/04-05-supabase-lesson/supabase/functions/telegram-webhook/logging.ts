@@ -2,7 +2,7 @@ import { decideNav, parseFaqAnswerId, parseLastNav, type NavScreen } from "../_s
 import { recordMessage } from "../_shared/services/conversations.ts";
 import { rememberFaqAnswer, rememberNav, reloadLastNav } from "../_shared/services/navigation.ts";
 import { isMessageGoneError, isNotModifiedError, TelegramApiError } from "../_shared/telegram/client.ts";
-import type { MessageKind } from "../_shared/types.ts";
+import type { MessageKind, MessageMeta } from "../_shared/types.ts";
 import type { InlineKeyboard } from "../_shared/telegram/types.ts";
 import type { HandlerContext } from "./context.ts";
 
@@ -13,15 +13,17 @@ export function logIncoming(ctx: HandlerContext, text: string, kind: MessageKind
 /**
  * Отправка ответа гостю + запись исходящего сообщения в диалог.
  * kind = 'search' — ответ на поиск блюда (хранится 7 дней, как сам запрос); остальное — 'text'.
+ * meta — пометка ответа агента или запасного ответа (S09), у остальных ответов не передаётся.
  */
 export async function reply(
   ctx: HandlerContext,
   text: string,
   keyboard?: InlineKeyboard,
   kind: MessageKind = "text",
+  meta?: MessageMeta,
 ): Promise<void> {
   await ctx.tg.sendMessage(ctx.chatId, text, keyboard);
-  await recordMessage(ctx.client, ctx.conversation.id, "out", text, kind);
+  await recordMessage(ctx.client, ctx.conversation.id, "out", text, kind, meta);
 }
 
 /** Что писать в лог про сбой побочной операции: только класс ошибки, без текста (в нём бывают данные гостя). */

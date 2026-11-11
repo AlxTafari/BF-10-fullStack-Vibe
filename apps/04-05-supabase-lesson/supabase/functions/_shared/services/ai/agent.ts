@@ -27,8 +27,13 @@ export const HISTORY_KINDS: MessageKind[] = ["text", "search"];
 
 export type FallbackReason = "error" | "timeout" | "quota" | "limit";
 
+/** Кнопка под ответом после проверки: у блюда есть название для подписи (подпись собирает content.ts). */
+export type AgentSuggestion =
+  | Exclude<Suggestion, { kind: "dish" }>
+  | { kind: "dish"; dishId: string; name: string };
+
 export type AgentTurnResult =
-  | { kind: "reply"; text: string; suggestions: Suggestion[]; model: string; tools: string[] }
+  | { kind: "reply"; text: string; suggestions: AgentSuggestion[]; model: string; tools: string[] }
   | { kind: "fallback"; reason: FallbackReason };
 
 export interface AgentDeps {
@@ -120,11 +125,11 @@ export async function runAgentTurn(
 }
 
 /** Кнопка «Карточка блюда» — только на существующее, опубликованное и доступное блюдо (§4.17). */
-async function onlyPublishedDishes(client: SupabaseClient, suggestions: Suggestion[]): Promise<Suggestion[]> {
-  const checked = await Promise.all(suggestions.map(async (s) => {
+async function onlyPublishedDishes(client: SupabaseClient, suggestions: Suggestion[]): Promise<AgentSuggestion[]> {
+  const checked = await Promise.all(suggestions.map(async (s): Promise<AgentSuggestion | null> => {
     if (s.kind !== "dish") return s;
     const dish = await getDishDetails(client, { dishId: s.dishId });
-    return dish?.card.is_available ? s : null;
+    return dish?.card.is_available ? { kind: "dish", dishId: s.dishId, name: dish.card.name } : null;
   }));
-  return checked.filter((s): s is Suggestion => s !== null);
+  return checked.filter((s): s is AgentSuggestion => s !== null);
 }
