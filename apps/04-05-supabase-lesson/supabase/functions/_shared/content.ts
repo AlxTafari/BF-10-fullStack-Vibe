@@ -1,7 +1,7 @@
 import { BOOKING_PERIODS, type PeriodId } from "./domain/bookingRules.ts";
 import { buildBookingCallback, buildCallback, buildFlowCallback } from "./domain/callbackData.ts";
 import { COMMENT_MAX, GUESTS_MAX, REQUEST_TEXT_MAX } from "./domain/fieldValidation.ts";
-import type { FlowErrorCode, FlowReply, GuestRequestKind } from "./domain/flowState.ts";
+import type { BookingEditField, FlowErrorCode, FlowReply, GuestRequestEditField, GuestRequestKind } from "./domain/flowState.ts";
 import { formatBookingShort, formatGuestRequestLine, type MyBooking, type MyGuestRequest } from "./domain/myRequests.ts";
 import { addDays } from "./domain/zonedTime.ts";
 import { formatDate, GUEST_REQUEST_KIND_LABEL } from "./domain/requestSummaries.ts";
@@ -135,6 +135,11 @@ export const VOICE_UNCLEAR = "Не расслышал — повторите, п
 export const VOICE_FAILED = "Не получилось разобрать голосовое — напишите, пожалуйста, текстом или выберите ниже 👇";
 /** Голосовое на шаге сценария: шаг ждёт текст или кнопку, вопрос шага — в сообщении выше. */
 export const VOICE_ON_STEP = "На этом шаге напишите, пожалуйста, текстом или выберите кнопку выше.";
+/**
+ * Голосовое на карточке-сводке не разобрано (сбой, лимит). Без главного меню: гость остаётся на карточке, ниже
+ * её кнопки, в том числе «✏️ Исправить».
+ */
+export const VOICE_ON_CARD_FAILED = "Не получилось разобрать голосовое — напишите поправку текстом или нажмите «✏️ Исправить».";
 /** AI ресторана выключен: голос не распознаём. Под текстом — главное меню. */
 export const VOICE_AI_OFF = "Голосовые я пока не понимаю — напишите, пожалуйста, текстом или выберите ниже 👇";
 
@@ -172,11 +177,24 @@ const CANCEL_BUTTON_TEXT = "✖️ Отмена";
 
 const PERIOD_LABEL: Record<PeriodId, string> = { lunch: "🍽 Обед", dinner: "🌙 Ужин" };
 
+/** Пункты меню «Что исправить?» (S09). Пожелания стираются целиком — новые гость пишет на карточке. */
+const EDIT_FIELD_LABEL: Record<BookingEditField | GuestRequestEditField, string> = {
+  date: "📅 Дату",
+  time: "🕒 Время",
+  guests: "👥 Число гостей",
+  name: "👤 Имя",
+  contact: "📞 Контакт",
+  comment: "💬 Пожелания заново",
+  kind: "Тип обращения",
+  text: "💬 Текст",
+};
+
 /** Причина, по которой ввод не принят. Гость видит её над повторным вопросом того же шага. */
 const FLOW_ERROR_TEXT: Record<FlowErrorCode, string> = {
   use_buttons: "Выберите вариант кнопкой ниже 👇",
   unavailable: "Этот вариант уже недоступен. Выберите другой.",
   contact_required: "Для вопроса менеджеру нужен контакт — без него мы не сможем ответить.",
+  correction_unclear: "Не получилось разобрать. Поправьте пункт кнопкой «✏️ Исправить» или отправьте заявку.",
   guests_not_integer: "Напишите число гостей цифрами, например 4.",
   guests_too_few: "Гостей должно быть не меньше одного.",
   guests_too_many: `Не больше ${GUESTS_MAX} гостей.`,
@@ -218,7 +236,9 @@ export function renderFlowReply(draftId: string, reply: FlowReply): { text: stri
   const btn = (text: string, action: string) => ({ text, callback_data: buildFlowCallback(draftId, action) });
   const { screen } = reply;
   // «Назад» есть на всех шагах, кроме первых (дата, тип обращения) и экрана «слишком много гостей» (там просто введите число).
-  const hasBack = !["ask_date", "no_dates", "ask_kind", "too_many_guests"].includes(screen.screen);
+  // Исключение — исправление пункта с карточки (S09): на первых шагах «Назад» возвращает к карточке без изменений.
+  const editing = (screen.screen === "ask_date" || screen.screen === "ask_kind") && screen.editing === true;
+  const hasBack = editing || !["ask_date", "no_dates", "ask_kind", "too_many_guests"].includes(screen.screen);
   const cancel = hasBack
     ? [btn("← Назад", "back"), btn(CANCEL_BUTTON_TEXT, "cancel")]
     : [btn(CANCEL_BUTTON_TEXT, "cancel")];
@@ -304,8 +324,16 @@ export function renderFlowReply(draftId: string, reply: FlowReply): { text: stri
       if (screen.askMore) text += "\n\nЧто-нибудь ещё? Например, детский стул или стол у окна — напишите, добавлю к заявке.";
       keyboard = [
         [btn(screen.askMore ? "✅ Нет, отправить заявку" : "✅ Отправить", "send")],
-        [btn("🔄 Начать заново", "restart")],
+        // «Исправить» — один пункт без потери остального (S09); «Начать заново» — всё с нуля.
+        [btn("✏️ Исправить", "edit"), btn("🔄 Начать заново", "restart")],
         cancel,
+      ];
+      break;
+    case "edit_menu":
+      text = "Что исправить?";
+      keyboard = [
+        ...chunk(screen.fields.map((f) => btn(EDIT_FIELD_LABEL[f], `e=${f}`)), 2),
+        [btn("← К заявке", "back")],
       ];
       break;
     case "submit":

@@ -1,5 +1,6 @@
 // Сценарий брони: дата → период → час → гости → имя (можно сразу с контактом) → контакт → сводка «Что-нибудь ещё?»
-// (текст дописывается в пожелания) → подтверждение.
+// (текст дописывается в пожелания) → подтверждение. С карточки — «✏️ Исправить»: меню пунктов, шаг выбранного
+// пункта и снова карточка (S09).
 // advance — чистая функция: (состояние, ввод, окружение) → (новое состояние, что показать).
 // БД и Telegram не знает; заявку по ответу `submit` создаёт вызывающий.
 import {
@@ -24,6 +25,7 @@ import {
   type AdvanceResult,
   type BookingChange,
   type BookingData,
+  type BookingEditField,
   type BookingState,
   type BookingStep,
   type FlowEnv,
@@ -32,20 +34,25 @@ import {
   type FlowScreen,
 } from "./flowState.ts";
 import { startGuestRequest } from "./guestRequestFlow.ts";
-import { buildBookingSummary } from "./requestSummaries.ts";
+import { buildBookingSummary, changedBookingFields } from "./requestSummaries.ts";
 
 function bookingEnv(env: FlowEnv): BookingEnv {
   return { now: env.now, timeZone: env.timeZone, openingHours: env.openingHours };
 }
 
-/** Экран текущего шага. Экспортируется для черновика от агента (bookingDraft.ts): он ставит шаг сам. */
-export function bookingScreen(state: BookingState, env: FlowEnv): FlowScreen {
+/**
+ * Экран текущего шага. Экспортируется для черновика от агента (bookingDraft.ts): он ставит шаг сам.
+ * changed — пункты, изменённые исправлением: на карточке они помечены ✏️.
+ */
+export function bookingScreen(state: BookingState, env: FlowEnv, changed: BookingEditField[] = []): FlowScreen {
   const { data } = state;
   const be = bookingEnv(env);
   switch (state.step) {
     case "date": {
       const dates = availableDates(be);
-      return dates.length === 0 ? { screen: "no_dates" } : { screen: "ask_date", dates, today: todayIn(be) };
+      if (dates.length === 0) return { screen: "no_dates" };
+      // editing — только при исправлении: обычный экран не меняется.
+      return { screen: "ask_date", dates, today: todayIn(be), ...(state.editFrom ? { editing: true } : {}) };
     }
     case "period":
       return { screen: "ask_period", date: data.date!, periods: availablePeriods(data.date!, be) };
@@ -61,12 +68,41 @@ export function bookingScreen(state: BookingState, env: FlowEnv): FlowScreen {
       return {
         screen: "confirm",
         flow: "booking",
-        summary: buildBookingSummary(data),
+        summary: buildBookingSummary(data, changed),
         isChange: !!state.change,
         // Пожелания дописываются на сводке; при изменении брони комментарий берётся из исходной и не меняется.
         askMore: !state.change,
       };
+    case "edit":
+      return { screen: "edit_menu", flow: "booking", fields: editableFields(state) };
   }
+}
+
+/** Пункты меню «Что исправить?»: при изменении брони имя, контакт и пожелания берутся из исходной и не меняются. */
+function editableFields(state: BookingState): BookingEditField[] {
+  return state.change ? ["date", "time", "guests"] : ["date", "time", "guests", "name", "contact", "comment"];
+}
+
+/**
+ * Какие поля стираются при исправлении пункта: дальше сценарий спросит их заново (firstMissingStep). Время зависит
+ * от даты (часы работы по дням), поэтому новая дата стирает и время.
+ */
+const EDIT_CLEARS: Record<Exclude<BookingEditField, "comment">, (keyof BookingData)[]> = {
+  date: ["date", "period", "time"],
+  time: ["period", "time"],
+  guests: ["guests"],
+  name: ["name"],
+  contact: ["contact"],
+};
+
+/**
+ * Дошли до карточки — исправление закончено: снимок «до» больше не нужен, а разница с ним — что пометить ✏️.
+ * Экспортируется для черновика агента (bookingDraft.ts): исправление кнопкой гость может закончить и словами.
+ */
+export function settle(state: BookingState): { state: BookingState; changed: BookingEditField[] } {
+  if (state.step !== "confirm" || !state.editFrom) return { state, changed: [] };
+  const { editFrom, ...rest } = state;
+  return { state: rest, changed: changedBookingFields(editFrom, state.data) };
 }
 
 /**
@@ -90,6 +126,7 @@ function isConsistent(state: BookingState): boolean {
     name: !!d.date && !!d.time && d.guests !== undefined,
     contact: !!d.date && !!d.time && d.guests !== undefined && !!d.name,
     confirm: !!d.date && !!d.time && d.guests !== undefined && !!d.name && !!d.contact,
+    edit: !!d.date && !!d.time && d.guests !== undefined && !!d.name && !!d.contact,
   };
   return needs[state.step];
 }
@@ -175,17 +212,24 @@ export function advanceBooking(state: BookingState, input: FlowInput, env: FlowE
     reply: { screen: bookingScreen(touched, env), error },
   });
   const next = (step: BookingStep, patch: Partial<BookingData>): AdvanceResult => {
-    const moved: BookingState = { ...touched, step, data: { ...touched.data, ...patch } };
-    return { state: moved, reply: { screen: bookingScreen(moved, env) } };
+    const { state: moved, changed } = settle({ ...touched, step, data: { ...touched.data, ...patch } });
+    return { state: moved, reply: { screen: bookingScreen(moved, env, changed) } };
   };
-  /** Записать поля и перейти к первому шагу, которого ещё нет (заполненные раньше пропускаются). */
-  const forward = (patch: Partial<BookingData>): AdvanceResult => {
-    const filled: BookingState = { ...touched, data: { ...touched.data, ...patch } };
-    const moved: BookingState = { ...filled, step: firstMissingStep(filled) };
-    return { state: moved, reply: { screen: bookingScreen(moved, env) } };
+  /**
+   * Записать поля и перейти к первому шагу, которого ещё нет (заполненные раньше пропускаются). Так же работает
+   * исправление пункта: стёртое поле — первое незаполненное, после ответа гость снова на карточке.
+   */
+  const forward = (patch: Partial<BookingData>, from: BookingState = touched): AdvanceResult => {
+    const filled: BookingState = { ...from, data: { ...from.data, ...patch } };
+    const { state: moved, changed } = settle({ ...filled, step: firstMissingStep(filled) });
+    return { state: moved, reply: { screen: bookingScreen(moved, env, changed) } };
   };
 
   if (input.type === "action" && input.action === "back") {
+    // Посреди исправления «Назад» — отказ от него: данные до исправления и карточка.
+    if (touched.editFrom) return restoreBeforeEdit(touched, env);
+    // Из меню «Что исправить?» — обратно к карточке.
+    if (touched.step === "edit") return next("confirm", {});
     const prev = goBack(touched);
     if (!prev) return stay("unavailable");
     return { state: prev, reply: { screen: bookingScreen(prev, env) } };
@@ -196,16 +240,18 @@ export function advanceBooking(state: BookingState, input: FlowInput, env: FlowE
 
   const be = bookingEnv(env);
   switch (state.step) {
+    // Дата, период и час идут через forward, а не на жёстко заданный следующий шаг: при исправлении даты или
+    // времени остальные пункты уже заполнены, и после часа гость сразу возвращается к карточке.
     case "date": {
       if (input.type === "text") return stay("use_buttons");
       const date = /^d=(\d{4}-\d{2}-\d{2})$/.exec(input.action)?.[1];
-      return date && availableDates(be).includes(date) ? next("period", { date }) : stay("unavailable");
+      return date && availableDates(be).includes(date) ? forward({ date }) : stay("unavailable");
     }
     case "period": {
       if (input.type === "text") return stay("use_buttons");
       const period = /^p=(\w+)$/.exec(input.action)?.[1] as PeriodId | undefined;
       const ok = period && PERIOD_IDS.includes(period) && availablePeriods(state.data.date!, be).includes(period);
-      return ok ? next("hour", { period }) : stay("unavailable");
+      return ok ? forward({ period }) : stay("unavailable");
     }
     case "hour": {
       // Текстовый ввод времени не принимаем (спека): только кнопки, так не бывает «19:30» и «вечером».
@@ -215,7 +261,7 @@ export function advanceBooking(state: BookingState, input: FlowInput, env: FlowE
       const time = `${hour.padStart(2, "0")}:00`;
       const slot = validateSlot(state.data.date!, time, be);
       const inPeriod = availableHours(state.data.date!, state.data.period!, be).includes(Number(hour));
-      return slot.ok && inPeriod ? next("guests", { time }) : stay("unavailable");
+      return slot.ok && inPeriod ? forward({ time }) : stay("unavailable");
     }
     case "guests": {
       if (input.type === "action") {
@@ -268,9 +314,28 @@ export function advanceBooking(state: BookingState, input: FlowInput, env: FlowE
         const v = validateComment(prev ? `${prev}, ${added}` : added);
         return v.ok ? next("confirm", { comment: v.value }) : stay(v.error);
       }
+      if (input.action === "edit") return next("edit", {});
       if (input.action !== "send") return stay("unavailable");
       // Состояние не меняем: если создание заявки упадёт, гость нажмёт «Отправить» ещё раз.
       return { state: touched, reply: { screen: { screen: "submit" } } };
     }
+    case "edit": {
+      // Меню — кнопками. Текст здесь не пожелание: при включённом AI его разберёт агент (handlers/flow.ts).
+      if (input.type === "text") return stay("use_buttons");
+      const field = /^e=(\w+)$/.exec(input.action)?.[1] as BookingEditField | undefined;
+      if (!field || !editableFields(state).includes(field)) return stay("unavailable");
+      // Пожелания: стираем и возвращаемся к карточке — там «Что-нибудь ещё?», гость напишет заново.
+      if (field === "comment") return next("confirm", { comment: null });
+      const data = { ...touched.data };
+      for (const f of EDIT_CLEARS[field]) delete data[f];
+      return forward({}, { ...touched, data, editFrom: touched.data });
+    }
   }
+}
+
+/** Отказ от исправления: данные до него и карточка. */
+function restoreBeforeEdit(state: BookingState, env: FlowEnv): AdvanceResult {
+  const { editFrom, ...rest } = state;
+  const restored: BookingState = { ...rest, step: "confirm", data: editFrom! };
+  return { state: restored, reply: { screen: bookingScreen(restored, env) } };
 }

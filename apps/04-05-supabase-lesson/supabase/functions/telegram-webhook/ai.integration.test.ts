@@ -193,6 +193,9 @@ Deno.test({
     await aiScenario([
       call("draftBooking", { date: slot.date, time: slot.time, guests: 4 }),
       answer("Отлично! На чьё имя оформить и как с вами связаться?"),
+      // Текст на карточке — агенту: пожелание = прежние пожелания + новое (здесь прежних нет).
+      call("draftBooking", { comment: "у окна" }),
+      answer("Добавил пожелание."),
     ], async (s) => {
       await s.guest.text("стол на четверых");
       // Ответ агента, под ним — кнопки шага «имя» (Назад / Отмена), а не suggestions.
@@ -205,9 +208,10 @@ Deno.test({
       await s.guest.text("Анна +302310000000");
       assert(s.guest.screen().text.startsWith("Проверьте заявку"), s.guest.screen().text);
       assert(s.guest.screen().text.includes("Что-нибудь ещё?"));
-      // Ответ текстом на карточке — пожелание, карточка рисуется заново.
+      // Ответ текстом на карточке при включённом AI — агенту (S09): он дописал пожелание, карточка рисуется заново
+      // с пометкой изменённого пункта.
       await s.guest.text("у окна");
-      assert(s.guest.screen().text.includes("Пожелания: у окна"), s.guest.screen().text);
+      assert(s.guest.screen().text.includes("Пожелания: у окна ✏️"), s.guest.screen().text);
       await s.guest.tapWhere(hasAction("send"));
 
       const { data: rows } = await client.from("booking_requests").select("guests_count, guest_name, contact, comment")
@@ -220,7 +224,75 @@ Deno.test({
       assertEquals(s.llm.remaining(), 0);
       // Ответ агента посчитан в лимит и журнал, как любой AI-ответ.
       const ai = (await journal(s)).filter((r) => (r.meta as { ai?: boolean } | null)?.ai);
-      assertEquals(ai.length, 1);
+      assertEquals(ai.length, 2);
+    });
+  },
+});
+
+// ---------------------------------------------------------------- исправление пункта на карточке (S09)
+
+/** Карточка брони на 3 гостей одной фразой — отправная точка исправлений. */
+const toCardSteps = (slot: { date: string; time: string }): FakeLlmStep[] => [
+  call("draftBooking", { date: slot.date, time: slot.time, guests: 3, name: "Анна", contact: "+302310000000" }),
+  answer("Проверьте заявку."),
+];
+
+Deno.test({
+  ...opts,
+  name: "Исправление: «нас четверо» на карточке → агент меняет только гостей, карточка с ✏️, пожелания не тронуты",
+  fn: async () => {
+    const client = createServiceClient();
+    const slot = await bookableSlot(client);
+    await aiScenario([...toCardSteps(slot), call("draftBooking", { guests: 4 }), answer("Исправил: 4 гостя.")], async (s) => {
+      await s.guest.text("стол на троих, Анна, +302310000000");
+      assert(s.guest.screen().text.startsWith("Проверьте заявку"));
+
+      await s.guest.text("ой, нас будет четверо");
+      const card = s.guest.screen().text;
+      assert(card.includes("👥 Гостей: 4 ✏️"), card);
+      assert(card.includes("💬 Пожелания: —"), "поправка не ушла в пожелания");
+      // Агенту ушёл контекст карточки, а не «текст не подошёл шагу».
+      assert(s.llm.requests[2].system.includes("summary card"), "промпт про карточку");
+      await s.guest.tapWhere(hasAction("send"));
+      const { data } = await client.from("booking_requests").select("guests_count, comment").eq("conversation_id", await s.guest.conversationId());
+      assertEquals(data, [{ guests_count: 4, comment: null }]);
+    });
+  },
+});
+
+Deno.test({
+  ...opts,
+  name: "Исправление: агент не ответил на карточке → та же карточка с подсказкой «Исправить», текст не записан в пожелания",
+  fn: async () => {
+    const client = createServiceClient();
+    const slot = await bookableSlot(client);
+    await aiScenario([...toCardSteps(slot), { error: "timeout" }], async (s) => {
+      await s.guest.text("стол на троих, Анна, +302310000000");
+      await s.guest.text("нас будет четверо");
+      const card = s.guest.screen().text;
+      assert(card.includes("Не получилось разобрать"), card);
+      assert(card.includes("👥 Гостей: 3") && card.includes("💬 Пожелания: —"), card);
+      assert(buttonsOf(s).some(hasAction("edit")), "кнопка «Исправить» на месте");
+    });
+  },
+});
+
+Deno.test({
+  ...opts,
+  name: "Исправление кнопкой: «✏️ Исправить» → «Число гостей» → 4 → карточка с ✏️; модель не вызывается",
+  fn: async () => {
+    const client = createServiceClient();
+    const slot = await bookableSlot(client);
+    await aiScenario(toCardSteps(slot), async (s) => {
+      await s.guest.text("стол на троих, Анна, +302310000000");
+      await s.guest.tapWhere(hasAction("edit"));
+      assertEquals(s.guest.screen().text, "Что исправить?");
+      await s.guest.tapWhere(hasAction("e=guests"));
+      await s.guest.text("4");
+      const card = s.guest.screen().text;
+      assert(card.startsWith("Проверьте заявку") && card.includes("👥 Гостей: 4 ✏️"), card);
+      // Первая фраза — два вызова модели (раунд draftBooking и ответ); дальше модель не звали.
+      assertEquals(s.llm.requests.length, 2);
     });
   },
 });

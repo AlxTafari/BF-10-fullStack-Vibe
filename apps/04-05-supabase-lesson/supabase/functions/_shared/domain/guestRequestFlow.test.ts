@@ -74,3 +74,26 @@ Deno.test("«Назад»: из контакта к тексту стирает 
   assertEquals(r.state.step, "kind");
   assertEquals((r.state as GuestRequestState).data, {});
 });
+
+// ---------------------------------------------------------------- «✏️ Исправить» на карточке (S09)
+
+Deno.test("обращение, исправить текст: шаг текста → сразу карточка, контакт на месте", () => {
+  let r = startGuestRequest(env());
+  for (const i of [act("k=complaint"), text("Долго несли"), act("me"), act("edit"), act("e=text")]) {
+    r = advanceGuestRequest(r.state as GuestRequestState, i, env());
+  }
+  assertEquals(r.state.step, "text");
+  r = advanceGuestRequest(r.state as GuestRequestState, text("Долго несли горячее, 40 минут"), env());
+  assertEquals(r.state.step, "confirm");
+  assertEquals((r.state as GuestRequestState).data, { kind: "complaint", text: "Долго несли горячее, 40 минут", contact: "@anna_k" });
+});
+
+Deno.test("обращение: тип сменили на вопрос менеджеру, а контакт был пропущен — контакт спросят", () => {
+  let r = startGuestRequest(env());
+  for (const i of [act("k=feedback"), text("Всё понравилось"), act("skip"), act("edit"), act("e=kind")]) {
+    r = advanceGuestRequest(r.state as GuestRequestState, i, env());
+  }
+  assertEquals(r.reply.screen, { screen: "ask_kind", editing: true });
+  r = advanceGuestRequest(r.state as GuestRequestState, act("k=manager_request"), env());
+  assertEquals(r.state.step, "contact");
+});

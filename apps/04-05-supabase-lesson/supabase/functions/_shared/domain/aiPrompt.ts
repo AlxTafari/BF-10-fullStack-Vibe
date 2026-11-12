@@ -28,15 +28,31 @@ const STEP_QUESTION: Record<string, string> = {
   "guest_request:text": "the message text",
   "guest_request:contact": "a contact: phone or @username",
   "guest_request:confirm": "to check the summary card and press Send",
+  "booking:edit": "which item of the booking to correct (buttons: date, time, guests, name, contact, wishes)",
+  "guest_request:edit": "which item of the message to correct (buttons: type, text, contact)",
 };
 
 /**
  * Блок промпта про живой сценарий: гость посреди брони или обращения, а его текст не подошёл шагу (иначе агента
  * не позвали бы). Компактно: шаг и уже заполненные поля, без истории.
+ * На карточке-сводке (confirm, меню «Что исправить?») текст идёт агенту всегда (S09): это поправка пункта,
+ * пожелание или вопрос — различить их и есть его задача.
  */
 export function describeFlow(flow: FlowState): string {
   const what = flow.flow === "booking" ? (flow.change ? "a change of an existing booking" : "a table booking") : "a message to the manager";
   const tool = flow.flow === "booking" ? "draftBooking" : "draftGuestRequest";
+  if (flow.step === "confirm" || flow.step === "edit") {
+    const wishes = flow.flow === "booking" && !flow.change
+      ? `\n- adds wishes ("and a high chair"): pass comment = the current wishes plus the new one, comma-separated;`
+      : "";
+    return `# Active draft
+The guest is looking at the summary card of ${what}, before sending it.
+Current data: ${JSON.stringify(flow.data)}
+Their message either:
+- corrects an item ("we are four", "not tomorrow, Saturday", "my phone is …"): call ${tool} with only the corrected fields;${wishes}
+- or asks a question: answer it.
+Never change items the guest did not mention. After ${tool} the updated card with changed items marked is shown automatically: do not repeat the data. If you cannot tell what to change, say they can press "✏️ Исправить" (Edit) on the card.`;
+  }
   return `# Active draft
 The guest is filling ${what}. Current step asks for ${STEP_QUESTION[`${flow.flow}:${flow.step}`] ?? flow.step}.
 Filled so far: ${JSON.stringify(flow.data)}

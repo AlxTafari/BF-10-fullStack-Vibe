@@ -1,6 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
 import { advanceBooking, startBooking } from "./bookingFlow.ts";
-import type { AdvanceResult, BookingState, FlowEnv, FlowInput } from "./flowState.ts";
+import type { AdvanceResult, BookingData, BookingState, FlowEnv, FlowInput } from "./flowState.ts";
 
 const HOURS = Object.fromEntries(
   ["2", "3", "4", "5", "6", "7"].map((d) => [d, { open: "13:00", close: "24:00" }]),
@@ -262,4 +262,88 @@ Deno.test("шаг имени: имя с телефоном одним сообщ
   const phoneOnly = advanceBooking(atName.state as BookingState, text("+30 690 123 4567"), env());
   assertEquals(phoneOnly.state.step, "name");
   assertEquals(phoneOnly.reply.screen, { screen: "ask_name", withContact: false, telegram: null });
+});
+
+// ---------------------------------------------------------------- «✏️ Исправить» на карточке (S09)
+
+const toCard: FlowInput[] = [...toGuests, text("3"), text("Анна"), act("me"), text("у окна")];
+const cardData: BookingData = { date: "2026-10-20", period: "dinner", time: "19:00", guests: 3, name: "Анна", contact: "@anna_k", comment: "у окна" };
+
+Deno.test("исправить: меню пунктов; число гостей → шаг гостей → снова карточка, остальное на месте", () => {
+  const menu = run(startBooking(env()), [...toCard, act("edit")]);
+  assertEquals(menu.state.step, "edit");
+  assertEquals(menu.reply.screen, { screen: "edit_menu", flow: "booking", fields: ["date", "time", "guests", "name", "contact", "comment"] });
+
+  const asked = run(menu, [act("e=guests")]);
+  assertEquals(asked.state.step, "guests");
+  const done = run(asked, [text("4")]);
+  assertEquals(done.state.step, "confirm");
+  assertEquals((done.state as BookingState).data, { ...cardData, guests: 4 });
+  assertEquals((done.state as BookingState).editFrom, undefined, "снимок «до» снят на карточке");
+});
+
+Deno.test("исправить время: период и час заново, дата и гости остаются — после часа сразу карточка", () => {
+  const r = run(startBooking(env()), [...toCard, act("edit"), act("e=time")]);
+  assertEquals(r.state.step, "period");
+  const done = run(r, [act("p=dinner"), act("h=21")]);
+  assertEquals(done.state.step, "confirm");
+  assertEquals((done.state as BookingState).data, { ...cardData, time: "21:00" });
+});
+
+Deno.test("исправить дату: стирает и время; на шаге даты есть «Назад»", () => {
+  const r = run(startBooking(env()), [...toCard, act("edit"), act("e=date")]);
+  assertEquals(r.state.step, "date");
+  assert(r.reply.screen.screen === "ask_date" && r.reply.screen.editing === true);
+  const done = run(r, [act("d=2026-10-21"), act("p=dinner"), act("h=20")]);
+  assertEquals(done.state.step, "confirm");
+  assertEquals((done.state as BookingState).data, { ...cardData, date: "2026-10-21", time: "20:00" });
+});
+
+Deno.test("исправить: «Назад» посреди исправления — данные до него и карточка, ничего не потеряно", () => {
+  const midway = run(startBooking(env()), [...toCard, act("edit"), act("e=time"), act("p=dinner")]);
+  assertEquals(midway.state.step, "hour");
+  const back = run(midway, [act("back")]);
+  assertEquals(back.state.step, "confirm");
+  assertEquals((back.state as BookingState).data, cardData);
+  assertEquals((back.state as BookingState).editFrom, undefined);
+});
+
+Deno.test("исправить: «← К заявке» из меню — карточка без изменений; текст в меню не пожелание", () => {
+  const menu = run(startBooking(env()), [...toCard, act("edit")]);
+  const typed = run(menu, [text("ещё детский стул")]);
+  assertEquals(typed.state.step, "edit");
+  assertEquals(typed.reply.error, "use_buttons");
+  const back = run(menu, [act("back")]);
+  assertEquals(back.state.step, "confirm");
+  assertEquals((back.state as BookingState).data, cardData);
+});
+
+Deno.test("исправить пожелания: стёрты, сразу карточка — новые пишутся там", () => {
+  const r = run(startBooking(env()), [...toCard, act("edit"), act("e=comment")]);
+  assertEquals(r.state.step, "confirm");
+  assertEquals((r.state as BookingState).data.comment, null);
+  const added = run(r, [text("детский стул")]);
+  assertEquals((added.state as BookingState).data.comment, "детский стул");
+});
+
+Deno.test("исправить при изменении брони: только дата, время, гости; имя чужим действием не стереть", () => {
+  const change = { replacesId: "b-1", guests: 2, name: "Анна", contact: "@anna_k", comment: null };
+  const card = run(startBooking(env(), change), [...toGuests, act("keep")]);
+  assertEquals(card.state.step, "confirm");
+  const menu = run(card, [act("edit")]);
+  assertEquals(menu.reply.screen, { screen: "edit_menu", flow: "booking", fields: ["date", "time", "guests"] });
+  const denied = run(menu, [act("e=name")]);
+  assertEquals([denied.state.step, denied.reply.error], ["edit", "unavailable"]);
+});
+
+Deno.test("исправить: на карточке ✏️ только у изменённого пункта; без изменений — без пометок", () => {
+  const done = run(startBooking(env()), [...toCard, act("edit"), act("e=guests"), text("4")]);
+  assert(done.reply.screen.screen === "confirm");
+  const summary = done.reply.screen.summary;
+  assert(summary.includes("👥 Гостей: 4 ✏️"));
+  assertEquals((summary.match(/✏️/g) ?? []).length, 1);
+
+  // Ввели то же число — менять нечего, пометки нет.
+  const same = run(startBooking(env()), [...toCard, act("edit"), act("e=guests"), text("3")]);
+  assert(same.reply.screen.screen === "confirm" && !same.reply.screen.summary.includes("✏️"));
 });

@@ -15,7 +15,9 @@ import {
   VOICE_UNCLEAR,
 } from "../_shared/content.ts";
 import { VOICE_MANAGER_MAX_SECONDS, VOICE_MAX_SECONDS, VOICE_PLACEHOLDER } from "../_shared/domain/voice.ts";
-import { answer, createFakeLlm, type FakeLlm, type FakeLlmStep, type FakeTranscribeStep, heard, unclear } from "../_shared/llm/fakeLlm.ts";
+import { availableDates } from "../_shared/domain/bookingRules.ts";
+import { freeHoursOn } from "../_shared/domain/bookingDraft.ts";
+import { answer, call, createFakeLlm, type FakeLlm, type FakeLlmStep, type FakeTranscribeStep, heard, unclear } from "../_shared/llm/fakeLlm.ts";
 import { createServiceClient } from "../_shared/supabaseClient.ts";
 import { createFakeTelegram, type FakeTelegram } from "./testing/fakeTelegram.ts";
 import { createTestGuest, type TestGuest } from "./testing/guest.ts";
@@ -253,3 +255,37 @@ Deno.test({
       assert((out?.meta as { aiFallback?: string } | null)?.aiFallback === "limit");
     }),
 });
+
+/** Первый слот, на который сейчас можно забронировать (как в ai.integration.test.ts): тест не зависит от дня запуска. */
+async function bookableSlot(client: ReturnType<typeof createServiceClient>): Promise<{ date: string; time: string }> {
+  const { data: r, error } = await client.from("restaurants").select("timezone, opening_hours").order("created_at").limit(1).single();
+  if (error) throw error;
+  const env = { now: new Date(), timeZone: r.timezone as string, openingHours: r.opening_hours };
+  for (const date of availableDates(env)) {
+    const hours = freeHoursOn(date, env);
+    if (hours.length > 0) return { date, time: hours[0] };
+  }
+  throw new Error("нет свободных слотов в ближайшие дни");
+}
+
+Deno.test({
+  ...opts,
+  name: "Голос на карточке брони: «нас будет четверо» → распознано → агент меняет гостей → карточка с ✏️",
+  fn: async () => {
+    const client = createServiceClient();
+    const slot = await bookableSlot(client);
+    await voiceScenario([
+      call("draftBooking", { date: slot.date, time: slot.time, guests: 3, name: "Анна", contact: "+302310000000" }),
+      answer("Проверьте заявку."),
+      call("draftBooking", { guests: 4 }),
+      answer("Исправил: 4 гостя."),
+    ], [heard("нас будет четверо")], async (s) => {
+      await s.guest.text("стол на троих, Анна, +302310000000");
+      assert(s.guest.screen().text.startsWith("Проверьте заявку"));
+      await s.voice(4);
+      assert(s.guest.screen().text.includes("👥 Гостей: 4 ✏️"), s.guest.screen().text);
+      assertEquals((await lastIncoming(s)).text, "нас будет четверо");
+    });
+  },
+});
+

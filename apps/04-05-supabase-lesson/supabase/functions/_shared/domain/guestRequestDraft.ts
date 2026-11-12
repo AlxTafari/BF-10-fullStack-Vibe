@@ -15,7 +15,8 @@ import {
   type GuestRequestState,
   type GuestRequestStep,
 } from "./flowState.ts";
-import { guestRequestScreen, isContactRequired, startGuestRequest } from "./guestRequestFlow.ts";
+import { guestRequestScreen, isContactRequired, settleGuestRequest, startGuestRequest } from "./guestRequestFlow.ts";
+import { changedGuestRequestFields } from "./requestSummaries.ts";
 
 export interface GuestRequestDraftInput {
   kind?: string;
@@ -68,11 +69,15 @@ export function applyGuestRequestDraft(
   if (data.contact === null && isContactRequired(data.kind)) delete data.contact;
 
   const step: GuestRequestStep = !data.kind ? "kind" : data.text === undefined ? "text" : data.contact === undefined ? "contact" : "confirm";
-  const state: GuestRequestState = { ...base, step, data, touchedAt: env.now.toISOString() };
+  // Поправка на карточке: изменённые пункты помечаются ✏️ (как у брони, см. bookingDraft.ts).
+  const onCard = base.step === "confirm" || base.step === "edit";
+  const settled = settleGuestRequest({ ...base, step, data, touchedAt: env.now.toISOString() });
+  const state = settled.state;
+  const changed = base.editFrom ? settled.changed : onCard && step === "confirm" ? changedGuestRequestFields(base.data, data) : [];
   const missing: GuestRequestDraftField[] = [];
   if (!data.kind) missing.push("kind");
   if (data.text === undefined) missing.push("text");
   if (data.contact === undefined) missing.push("contact");
 
-  return { result: { state, reply: { screen: guestRequestScreen(state, env) } }, accepted, errors, missing };
+  return { result: { state, reply: { screen: guestRequestScreen(state, env, changed) } }, accepted, errors, missing };
 }

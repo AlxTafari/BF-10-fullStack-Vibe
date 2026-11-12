@@ -16,7 +16,8 @@ import {
   todayIn,
   validateSlot,
 } from "./bookingRules.ts";
-import { bookingScreen, firstMissingStep, startBooking } from "./bookingFlow.ts";
+import { bookingScreen, firstMissingStep, settle, startBooking } from "./bookingFlow.ts";
+import { changedBookingFields } from "./requestSummaries.ts";
 import { resolveAgentContact } from "./agentContact.ts";
 import { validateComment, validateGuests, validateName } from "./fieldValidation.ts";
 import type { BookingData, BookingState, DraftError, DraftOutcome, FlowEnv, FlowState } from "./flowState.ts";
@@ -157,7 +158,12 @@ export function applyBookingDraft(current: FlowState | null, input: BookingDraft
   } else if (contact.kind === "error") errors.contact = contact.error;
 
   const filled: BookingState = { ...base, data, touchedAt: env.now.toISOString() };
-  const state: BookingState = { ...filled, step: firstMissingStep(filled) };
+  // Поправка на карточке (или в меню «Что исправить?»): изменённые пункты помечаются ✏️. Агент мог прийти и посреди
+  // исправления кнопкой (есть editFrom) — тогда сравниваем с данными до него, и settle снимает снимок.
+  const onCard = base.step === "confirm" || base.step === "edit";
+  const settled = settle({ ...filled, step: firstMissingStep(filled) });
+  const state = settled.state;
+  const changed = base.editFrom ? settled.changed : onCard && state.step === "confirm" ? changedBookingFields(base.data, data) : [];
   const missing: BookingDraftField[] = [];
   if (!data.date) missing.push("date");
   if (!data.time) missing.push("time");
@@ -166,7 +172,7 @@ export function applyBookingDraft(current: FlowState | null, input: BookingDraft
   if (!isChange && !data.contact) missing.push("contact");
 
   return {
-    result: { state, reply: { screen: bookingScreen(state, env) } },
+    result: { state, reply: { screen: bookingScreen(state, env, changed) } },
     accepted,
     errors,
     missing,

@@ -1,6 +1,6 @@
 // Тексты-сводки заявок: гостю перед отправкой и менеджеру в уведомлении. Чистые форматтеры.
 // Подписи полей («Дата», «Гостей») — часть форматтера, как в карточке блюда (ADR-009).
-import type { BookingData, GuestRequestData, GuestRequestKind } from "./flowState.ts";
+import type { BookingData, BookingEditField, GuestRequestData, GuestRequestEditField, GuestRequestKind } from "./flowState.ts";
 import { formatLocalDateTime, isoWeekday } from "./zonedTime.ts";
 
 export const GUEST_REQUEST_KIND_LABEL: Record<GuestRequestKind, string> = {
@@ -19,23 +19,40 @@ export function formatDate(date: string): string {
 }
 
 /** Сводка брони для подтверждения гостем. Пока гость не нажал «Отправить», это только заявка, не бронь. */
-export function buildBookingSummary(data: BookingData): string {
+/** Пометка пункта, изменённого исправлением (S09): гость видит, что именно поменялось, до того как отправить. */
+const CHANGED_MARK = " ✏️";
+const mark = (changed: readonly string[], field: string) => (changed.includes(field) ? CHANGED_MARK : "");
+
+/** changed — пункты, изменённые последним исправлением (кнопкой или поправкой агенту); помечаются ✏️. */
+export function buildBookingSummary(data: BookingData, changed: readonly BookingEditField[] = []): string {
   return [
-    `📅 Дата: ${data.date ? formatDate(data.date) : NO_COMMENT}`,
-    `🕒 Время: ${data.time ?? NO_COMMENT}`,
-    `👥 Гостей: ${data.guests ?? NO_COMMENT}`,
-    `👤 Имя: ${data.name ?? NO_COMMENT}`,
-    `📞 Контакт: ${data.contact ?? NO_COMMENT}`,
-    `💬 Пожелания: ${data.comment ?? NO_COMMENT}`,
+    `📅 Дата: ${data.date ? formatDate(data.date) : NO_COMMENT}${mark(changed, "date")}`,
+    `🕒 Время: ${data.time ?? NO_COMMENT}${mark(changed, "time")}`,
+    `👥 Гостей: ${data.guests ?? NO_COMMENT}${mark(changed, "guests")}`,
+    `👤 Имя: ${data.name ?? NO_COMMENT}${mark(changed, "name")}`,
+    `📞 Контакт: ${data.contact ?? NO_COMMENT}${mark(changed, "contact")}`,
+    `💬 Пожелания: ${data.comment ?? NO_COMMENT}${mark(changed, "comment")}`,
   ].join("\n");
 }
 
-export function buildGuestRequestSummary(data: GuestRequestData): string {
+export function buildGuestRequestSummary(data: GuestRequestData, changed: readonly GuestRequestEditField[] = []): string {
   return [
-    `Тип: ${data.kind ? GUEST_REQUEST_KIND_LABEL[data.kind] : NO_COMMENT}`,
-    `💬 Текст: ${data.text ?? NO_COMMENT}`,
-    `📞 Контакт: ${data.contact ?? "не указан"}`,
+    `Тип: ${data.kind ? GUEST_REQUEST_KIND_LABEL[data.kind] : NO_COMMENT}${mark(changed, "kind")}`,
+    `💬 Текст: ${data.text ?? NO_COMMENT}${mark(changed, "text")}`,
+    `📞 Контакт: ${data.contact ?? "не указан"}${mark(changed, "contact")}`,
   ].join("\n");
+}
+
+/** Какие пункты брони отличаются (для пометки ✏️). Период не пункт карточки: он следует из времени. */
+export function changedBookingFields(before: BookingData, after: BookingData): BookingEditField[] {
+  const fields: BookingEditField[] = ["date", "time", "guests", "name", "contact", "comment"];
+  // undefined и null у пожеланий — одно и то же «нет».
+  return fields.filter((f) => (before[f] ?? null) !== (after[f] ?? null));
+}
+
+export function changedGuestRequestFields(before: GuestRequestData, after: GuestRequestData): GuestRequestEditField[] {
+  const fields: GuestRequestEditField[] = ["kind", "text", "contact"];
+  return fields.filter((f) => (before[f] ?? null) !== (after[f] ?? null));
 }
 
 // ---------------------------------------------------------------- уведомления менеджеру

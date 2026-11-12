@@ -160,3 +160,24 @@ Deno.test("useTelegram при изменении брони — not_editable, к
   const o = applyBookingDraft(started, { useTelegram: true }, env());
   assertEquals(o.errors, { contact: "not_editable" });
 });
+
+Deno.test("поправка агенту на карточке: «нас четверо» → гостей 4 ✏️, снова карточка; пожелание дописывается", () => {
+  const card = applyBookingDraft(null, { date: "2026-10-14", time: "19:00", guests: 3, name: "Анна", contact: "+306901234567" }, env());
+  assertEquals((card.result.state as BookingState).step, "confirm");
+
+  const fixed = applyBookingDraft(card.result.state, { guests: 4 }, env());
+  assertEquals((fixed.result.state as BookingState).step, "confirm");
+  const screen = fixed.result.reply.screen;
+  assert(screen.screen === "confirm" && screen.summary.includes("👥 Гостей: 4 ✏️"));
+  assert(screen.screen === "confirm" && !screen.summary.includes("Дата: ср, 14.10.2026 ✏️"));
+
+  const wish = applyBookingDraft(fixed.result.state, { comment: "у окна" }, env());
+  const s2 = wish.result.reply.screen;
+  assert(s2.screen === "confirm" && s2.summary.includes("💬 Пожелания: у окна ✏️") && !s2.summary.includes("Гостей: 4 ✏️"));
+});
+
+Deno.test("черновик вне карточки (первая фраза) — без пометок ✏️", () => {
+  const card = applyBookingDraft(null, { date: "2026-10-14", time: "19:00", guests: 3, name: "Анна", contact: "+306901234567" }, env());
+  const screen = card.result.reply.screen;
+  assert(screen.screen === "confirm" && !screen.summary.includes("✏️"));
+});

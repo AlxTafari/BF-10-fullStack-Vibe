@@ -34,19 +34,23 @@ export const TRANSCRIBE_INSTRUCTION = `You transcribe a voice message that a res
 /**
  * Что делать с голосовым:
  * - agent — распознать и отдать агенту как обычный текст;
+ * - card — гость на карточке-сводке (или в меню «Что исправить?»): распознать и обработать как текст на карточке —
+ *   поправка пункта, пожелание или вопрос (S09);
  * - manager — ручной режим: только записать в журнал, менеджер слушает в админке, бот молчит (как на текст);
  * - manager_too_long — ручной режим, но длиннее VOICE_MANAGER_MAX_SECONDS: попросить покороче;
  * - text_only — на шаге сценария или при выключенном AI: попросить написать текстом;
  * - too_long — длиннее VOICE_MAX_SECONDS: попросить покороче.
  * Голосовое пишется в журнал во всех случаях — менеджер может прослушать и распознать его кнопкой.
  */
-export type VoiceRoute = "agent" | "manager" | "manager_too_long" | "text_only" | "too_long";
+export type VoiceRoute = "agent" | "card" | "manager" | "manager_too_long" | "text_only" | "too_long";
 
 export interface VoiceRouteInput {
   durationSec: number;
   fileSize?: number;
   /** Идёт пошаговый сценарий (бронь, обращение). */
   hasLiveFlow: boolean;
+  /** Сценарий стоит на карточке-сводке или в меню «Что исправить?» — там голос принимается (S09). */
+  onCard?: boolean;
   /** Менеджер в диалоге (S06b). */
   handoffActive: boolean;
   /** AI ресторана включён и модель настроена (ключ Gemini задан). */
@@ -59,13 +63,15 @@ export interface VoiceRouteInput {
  * Суточный лимит ходов здесь не проверяется: нужен запрос к БД — его делает роутер после route = "agent".
  */
 export function routeVoice(input: VoiceRouteInput): VoiceRoute {
-  if (input.hasLiveFlow) return "text_only";
+  // На шагах сценария ждут короткий ответ или кнопку — голос не принимаем. На карточке — принимаем при AI: поправку
+  // «нас четверо» удобно сказать голосом, а разбирает её агент.
+  if (input.hasLiveFlow && !(input.onCard && input.aiAvailable)) return "text_only";
   if (input.handoffActive) return input.durationSec > VOICE_MANAGER_MAX_SECONDS ? "manager_too_long" : "manager";
   if (!input.aiAvailable) return "text_only";
   if (input.durationSec > VOICE_MAX_SECONDS) return "too_long";
   // Длительность в норме, а файл огромный — странный файл; для гостя это то же «слишком длинное».
   if (input.fileSize !== undefined && input.fileSize > VOICE_MAX_BYTES) return "too_long";
-  return "agent";
+  return input.hasLiveFlow ? "card" : "agent";
 }
 
 /** Можно ли распознать файл по кнопке менеджера: длительность не ограничиваем, только размер (размер неизвестен — пробуем). */

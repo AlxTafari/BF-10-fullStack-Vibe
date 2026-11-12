@@ -13,7 +13,7 @@ import {
 } from "../../_shared/content.ts";
 import type { FlowInput, FlowReply, FlowState } from "../../_shared/domain/flowState.ts";
 import { getAiSettings } from "../../_shared/services/aiSettings.ts";
-import { cancelFlow, continueFlow, isDraftSubmitted, startFlow, submitFlow } from "../../_shared/services/flow.ts";
+import { cancelFlow, continueFlow, currentFlowScreen, isDraftSubmitted, startFlow, submitFlow } from "../../_shared/services/flow.ts";
 import { notifyManager } from "../../_shared/services/managerNotification.ts";
 import { guestOf, type HandlerContext } from "../context.ts";
 import { handleAiOnStep } from "./ai.ts";
@@ -71,6 +71,17 @@ export async function handleFlowAction(ctx: HandlerContext, state: FlowState, ac
 }
 
 async function advance(ctx: HandlerContext, state: FlowState, input: FlowInput): Promise<void> {
+  // Текст на карточке-сводке (и в меню «Что исправить?») при включённом AI — агенту сразу, мимо шага (S09): шаг
+  // дописал бы «нас четверо» в пожелания. Агент различает поправку, пожелание и вопрос; не ответил — та же карточка
+  // с подсказкой про «✏️ Исправить», текст гостя никуда не записан. AI выключен — как раньше (текст в пожелания).
+  if (input.type === "text" && (state.step === "confirm" || state.step === "edit") && ctx.llm) {
+    const settings = await getAiSettings(ctx.client, ctx.conversation.restaurant_id);
+    if (settings.aiEnabled) {
+      const unchanged = await currentFlowScreen(ctx.client, state, guestOf(ctx), "correction_unclear");
+      await handleAiOnStep(ctx, settings, unchanged);
+      return;
+    }
+  }
   const result = await continueFlow(ctx.client, ctx.conversation.id, state, input, guestOf(ctx));
   if (result.reply.screen.screen === "submit") {
     await submit(ctx, result.state);

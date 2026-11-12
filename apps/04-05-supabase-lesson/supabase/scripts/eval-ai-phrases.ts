@@ -24,14 +24,17 @@ import type { ConversationRow } from "../functions/_shared/types.ts";
 interface Case {
   name: string;
   phrase: string;
-  /** Подготовка диалога до фразы: бронь начата кнопками и стоит на шаге «время». */
-  setup?: "booking_at_time";
+  /**
+   * Подготовка диалога до фразы: booking_at_time — бронь стоит на шаге «время»; booking_on_card — бронь на 3 гостей
+   * заполнена и стоит на карточке-сводке (S09: поправка пункта или пожелание).
+   */
+  setup?: "booking_at_time" | "booking_on_card";
   /** Хотя бы один из этих tools должен быть вызван. */
   anyOf?: string[];
   /** Ни один из этих tools не должен быть вызван. */
   noneOf?: string[];
-  /** Контакт в черновике после хода (conversations.state.data.contact). */
-  expectContact?: string;
+  /** Поля черновика после хода (conversations.state.data), сравнение каждого поля на равенство. */
+  expectDraft?: Record<string, unknown>;
 }
 
 const CASES: Case[] = [
@@ -41,7 +44,11 @@ const CASES: Case[] = [
   { name: "аллергены", phrase: "у меня аллергия на орехи, что можно?", anyOf: ["filterMenuByAllergens"], noneOf: ["flagThreat"] },
   { name: "бронь: одной фразой", phrase: "стол на завтра в 19 на четверых", anyOf: ["draftBooking"], noneOf: ["flagThreat"] },
   // Модель не знает ника гостя: на «по телеграму» — useTelegram, контакт = настоящий @username, а не «@username».
-  { name: "бронь: контакт по телеграму", phrase: "стол на завтра в 19 на двоих, я Анна, свяжитесь со мной по телеграму", anyOf: ["draftBooking"], expectContact: "@eval_guest" },
+  { name: "бронь: контакт по телеграму", phrase: "стол на завтра в 19 на двоих, я Анна, свяжитесь со мной по телеграму", anyOf: ["draftBooking"], expectDraft: { contact: "@eval_guest" } },
+  // Карточка-сводка: поправка меняет только названный пункт, пожелание не трогает остальное (S09).
+  { name: "карточка: поправка гостей", phrase: "ой, нас будет четверо", setup: "booking_on_card", anyOf: ["draftBooking"], expectDraft: { guests: 4, comment: undefined } },
+  { name: "карточка: пожелание", phrase: "и нужен детский стульчик", setup: "booking_on_card", anyOf: ["draftBooking"], expectDraft: { guests: 3 } },
+  { name: "карточка: вопрос", phrase: "а парковка у вас есть?", setup: "booking_on_card", noneOf: ["draftBooking"], expectDraft: { guests: 3 } },
   { name: "бронь: побочный вопрос на шаге", phrase: "а у вас есть детские стулья?", setup: "booking_at_time", anyOf: ["listFaq", "getFaqAnswer", "getRestaurantInfo"], noneOf: ["flagThreat"] },
   { name: "бронь: время словами на шаге", phrase: "давай в восемь вечера", setup: "booking_at_time", anyOf: ["draftBooking"] },
   { name: "мои заявки", phrase: "покажи мои брони", anyOf: ["listMyRequests"] },
@@ -56,6 +63,17 @@ const CASES: Case[] = [
 ];
 
 const GUEST: GuestIdentity = { username: "eval_guest", firstName: "Тест" };
+
+/** Бронь на 3 гостей целиком: черновик стоит на карточке-сводке. */
+async function bookingOnCard(client: SupabaseClient, conversation: ConversationRow): Promise<void> {
+  for (let i = 1; i <= 7; i++) {
+    const date = new Date(Date.now() + i * 86_400_000).toISOString().slice(0, 10);
+    const input = { date, time: "19:00", guests: 3, name: "Анна", contact: "+302310000000" };
+    const outcome = await draftBookingFromAgent(client, conversation.id, null, input, GUEST);
+    if (outcome.result.state.step === "confirm") return;
+  }
+  throw new Error("не нашлось даты с 19:00 на неделю вперёд — проверь часы работы в seed");
+}
 
 /** Ставит бронь на шаг «время»: ближайшая дата, на которую черновик её принимает (ресторан может не работать). */
 async function bookingAtTime(client: SupabaseClient, conversation: ConversationRow): Promise<void> {
@@ -86,8 +104,8 @@ async function runCase(client: SupabaseClient, restaurantId: string, c: Case): P
     displayName: `eval: ${c.name}`,
   });
   try {
-    if (c.setup === "booking_at_time") {
-      await bookingAtTime(client, conversation);
+    if (c.setup) {
+      await (c.setup === "booking_at_time" ? bookingAtTime : bookingOnCard)(client, conversation);
       const { data, error } = await client.from("conversations").select("*").eq("id", conversation.id).single();
       if (error) throw error;
       conversation = data as ConversationRow;
@@ -103,10 +121,13 @@ async function runCase(client: SupabaseClient, restaurantId: string, c: Case): P
     if (c.anyOf && !c.anyOf.some((t) => turn.tools.includes(t))) problems.push(`ждали один из: ${c.anyOf.join(", ")}`);
     const forbidden = (c.noneOf ?? []).filter((t) => turn.tools.includes(t));
     if (forbidden.length > 0) problems.push(`лишние: ${forbidden.join(", ")}`);
-    if (c.expectContact !== undefined) {
+    if (c.expectDraft) {
       const { data } = await client.from("conversations").select("state").eq("id", conversation.id).single();
-      const contact = (data?.state as { data?: { contact?: unknown } } | null)?.data?.contact;
-      if (contact !== c.expectContact) problems.push(`контакт ${JSON.stringify(contact)}, ждали ${c.expectContact}`);
+      const draft = (data?.state as { data?: Record<string, unknown> } | null)?.data ?? {};
+      for (const [field, want] of Object.entries(c.expectDraft)) {
+        // null и отсутствие поля — одно «нет» (пожелания).
+        if ((draft[field] ?? undefined) !== want) problems.push(`${field}: ${JSON.stringify(draft[field])}, ждали ${JSON.stringify(want)}`);
+      }
     }
     return { name: c.name, ok: problems.length === 0, tools: turn.tools, problem: problems.join("; "), text: turn.text, ms };
   } finally {

@@ -1,18 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { advanceBooking, startBooking } from "../domain/bookingFlow.ts";
+import { advanceBooking, bookingScreen, startBooking } from "../domain/bookingFlow.ts";
 import { applyBookingDraft, type BookingDraftInput, type BookingDraftOutcome } from "../domain/bookingDraft.ts";
 import {
   type AdvanceResult,
   type BookingState,
   type DraftOutcome,
   type FlowEnv,
+  type FlowErrorCode,
   type FlowInput,
   type FlowState,
   type GuestRequestKind,
   type GuestRequestState,
   parseFlowState,
 } from "../domain/flowState.ts";
-import { advanceGuestRequest, startGuestRequest } from "../domain/guestRequestFlow.ts";
+import { advanceGuestRequest, guestRequestScreen, startGuestRequest } from "../domain/guestRequestFlow.ts";
 import {
   applyGuestRequestDraft,
   type GuestRequestDraftField,
@@ -107,6 +108,21 @@ export async function startChangeFlow(
 }
 
 /** Применяет ввод гостя к живому сценарию, сохраняет новое состояние, возвращает ответ. */
+/**
+ * Экран текущего шага без изменений и записи — запасной ответ, когда агент не разобрал поправку на карточке (S09):
+ * карточка та же, сверху причина. Не advance: тот дописал бы текст гостя в пожелания.
+ */
+export async function currentFlowScreen(
+  client: SupabaseClient,
+  state: FlowState,
+  guest: GuestIdentity,
+  error?: FlowErrorCode,
+): Promise<AdvanceResult> {
+  const env = await loadEnv(client, guest);
+  const screen = state.flow === "booking" ? bookingScreen(state, env) : guestRequestScreen(state, env);
+  return { state, reply: error ? { screen, error } : { screen } };
+}
+
 export async function continueFlow(
   client: SupabaseClient,
   conversationId: string,

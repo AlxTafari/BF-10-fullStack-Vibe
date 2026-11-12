@@ -128,7 +128,7 @@ async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void
   // Голосовое (S09, сессия 4) — свой путь: агенту, менеджеру или отказ решает handlers/voice.ts. В лимит идёт
   // как свободный текст (проверка выше): у голосового text нет, isCommand = false.
   if (message.voice) {
-    await handleVoice(ctx, message.voice, !!flowState);
+    await handleVoice(ctx, message.voice, flowState);
     return;
   }
   if (isTooLong(text)) {

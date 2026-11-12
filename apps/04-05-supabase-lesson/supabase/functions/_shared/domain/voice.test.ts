@@ -28,6 +28,15 @@ Deno.test("routeVoice: шаг сценария — text_only, даже в руч
   assertEquals(routeVoice({ ...base, hasLiveFlow: true, durationSec: 600 }), "text_only");
 });
 
+Deno.test("routeVoice: карточка при включённом AI — card; без AI — text_only; длинное — too_long", () => {
+  const card = { ...base, hasLiveFlow: true, onCard: true };
+  assertEquals(routeVoice(card), "card");
+  assertEquals(routeVoice({ ...card, aiAvailable: false }), "text_only");
+  assertEquals(routeVoice({ ...card, durationSec: VOICE_MAX_SECONDS + 1 }), "too_long");
+  // Обычный шаг сценария — по-прежнему текстом.
+  assertEquals(routeVoice({ ...base, hasLiveFlow: true, onCard: false }), "text_only");
+});
+
 Deno.test("routeVoice: ручной режим — manager независимо от AI, до своего предела длины", () => {
   assertEquals(routeVoice({ ...base, handoffActive: true }), "manager");
   assertEquals(routeVoice({ ...base, handoffActive: true, aiAvailable: false }), "manager");

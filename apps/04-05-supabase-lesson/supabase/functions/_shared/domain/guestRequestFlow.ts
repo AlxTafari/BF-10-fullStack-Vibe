@@ -1,4 +1,5 @@
-// Сценарий обращения: тип → текст → контакт → сводка → подтверждение.
+// Сценарий обращения: тип → текст → контакт → сводка → подтверждение. С карточки — «✏️ Исправить»: меню пунктов,
+// шаг выбранного пункта и снова карточка (S09).
 // advance — чистая функция: (состояние, ввод, окружение) → (новое состояние, что показать).
 // БД и Telegram не знает; заявку по ответу `submit` создаёт вызывающий.
 import { validateContact, validateRequestText } from "./fieldValidation.ts";
@@ -10,30 +11,57 @@ import {
   type FlowScreen,
   GUEST_REQUEST_KINDS,
   type GuestRequestData,
+  type GuestRequestEditField,
   type GuestRequestKind,
   type GuestRequestState,
   type GuestRequestStep,
 } from "./flowState.ts";
-import { buildGuestRequestSummary } from "./requestSummaries.ts";
+import { buildGuestRequestSummary, changedGuestRequestFields } from "./requestSummaries.ts";
 
 /** Для вопроса менеджеру без контакта ответить некуда, для отзыва и жалобы — можно оставить анонимно. */
 export function isContactRequired(kind: GuestRequestKind | undefined): boolean {
   return kind === "manager_request";
 }
 
-/** Экран текущего шага. Экспортируется для черновика от агента (guestRequestDraft.ts). */
-export function guestRequestScreen(state: GuestRequestState, env: FlowEnv): FlowScreen {
+/**
+ * Экран текущего шага. Экспортируется для черновика от агента (guestRequestDraft.ts).
+ * changed — пункты, изменённые исправлением: на карточке они помечены ✏️.
+ */
+export function guestRequestScreen(state: GuestRequestState, env: FlowEnv, changed: GuestRequestEditField[] = []): FlowScreen {
   const { data } = state;
   switch (state.step) {
     case "kind":
-      return { screen: "ask_kind" };
+      // editing — только при исправлении: обычный экран не меняется.
+      return state.editFrom ? { screen: "ask_kind", editing: true } : { screen: "ask_kind" };
     case "text":
       return { screen: "ask_text", kind: data.kind! };
     case "contact":
       return { screen: "ask_contact", canUseUsername: env.username !== null, optional: !isContactRequired(data.kind) };
     case "confirm":
-      return { screen: "confirm", flow: "guest_request", summary: buildGuestRequestSummary(data) };
+      return { screen: "confirm", flow: "guest_request", summary: buildGuestRequestSummary(data, changed) };
+    case "edit":
+      return { screen: "edit_menu", flow: "guest_request", fields: EDIT_FIELDS };
   }
+}
+
+const EDIT_FIELDS: GuestRequestEditField[] = ["kind", "text", "contact"];
+
+/**
+ * Первый шаг, данных которого ещё нет: так после исправления пункта гость возвращается к карточке, а не проходит
+ * следующие шаги заново. Пропущенный контакт (null) — пройденный шаг.
+ */
+function firstMissingStep(data: GuestRequestData): GuestRequestStep {
+  return !data.kind ? "kind" : data.text === undefined ? "text" : data.contact === undefined ? "contact" : "confirm";
+}
+
+/**
+ * Дошли до карточки — исправление закончено: снимок «до» больше не нужен, а разница с ним — что пометить ✏️.
+ * Экспортируется для черновика агента (guestRequestDraft.ts).
+ */
+export function settleGuestRequest(state: GuestRequestState): { state: GuestRequestState; changed: GuestRequestEditField[] } {
+  if (state.step !== "confirm" || !state.editFrom) return { state, changed: [] };
+  const { editFrom, ...rest } = state;
+  return { state: rest, changed: changedGuestRequestFields(editFrom, state.data) };
 }
 
 /** Данные, без которых шаг не имеет смысла (битое состояние в БД), — начинаем сценарий заново. */
@@ -44,7 +72,7 @@ function isConsistent(state: GuestRequestState): boolean {
   if (step === "text") return true;
   if (data.text === undefined) return false;
   if (step === "contact") return true;
-  // confirm: контакт либо введён, либо осознанно пропущен — и пропуск допустим не для всех типов.
+  // confirm и меню исправления: контакт либо введён, либо осознанно пропущен — и пропуск допустим не для всех типов.
   return data.contact !== undefined && !(isContactRequired(data.kind) && data.contact === null);
 }
 
@@ -88,11 +116,27 @@ export function advanceGuestRequest(state: GuestRequestState, input: FlowInput, 
     reply: { screen: guestRequestScreen(touched, env), error },
   });
   const next = (step: GuestRequestStep, patch: Partial<GuestRequestData>): AdvanceResult => {
-    const moved: GuestRequestState = { ...touched, step, data: { ...touched.data, ...patch } };
-    return { state: moved, reply: { screen: guestRequestScreen(moved, env) } };
+    const { state: moved, changed } = settleGuestRequest({ ...touched, step, data: { ...touched.data, ...patch } });
+    return { state: moved, reply: { screen: guestRequestScreen(moved, env, changed) } };
+  };
+  /** Записать поля и перейти к первому незаполненному шагу (при исправлении — обычно сразу к карточке). */
+  const forward = (patch: Partial<GuestRequestData>, from: GuestRequestState = touched): AdvanceResult => {
+    const data = { ...from.data, ...patch };
+    // Сменили тип на вопрос менеджеру, а контакт был пропущен — пропуск больше не годится, контакт спросим.
+    if (data.contact === null && isContactRequired(data.kind)) delete data.contact;
+    const { state: moved, changed } = settleGuestRequest({ ...from, data, step: firstMissingStep(data) });
+    return { state: moved, reply: { screen: guestRequestScreen(moved, env, changed) } };
   };
 
   if (input.type === "action" && input.action === "back") {
+    // Посреди исправления «Назад» — отказ от него: данные до исправления и карточка.
+    if (touched.editFrom) {
+      const { editFrom, ...rest } = touched;
+      const restored: GuestRequestState = { ...rest, step: "confirm", data: editFrom };
+      return { state: restored, reply: { screen: guestRequestScreen(restored, env) } };
+    }
+    // Из меню «Что исправить?» — обратно к карточке.
+    if (touched.step === "edit") return next("confirm", {});
     const prev = goBack(touched);
     if (!prev) return stay("unavailable");
     return { state: prev, reply: { screen: guestRequestScreen(prev, env) } };
@@ -102,12 +146,12 @@ export function advanceGuestRequest(state: GuestRequestState, input: FlowInput, 
     case "kind": {
       if (input.type === "text") return stay("use_buttons");
       const kind = /^k=(.+)$/.exec(input.action)?.[1] as GuestRequestKind | undefined;
-      return kind && GUEST_REQUEST_KINDS.includes(kind) ? next("text", { kind }) : stay("unavailable");
+      return kind && GUEST_REQUEST_KINDS.includes(kind) ? forward({ kind }) : stay("unavailable");
     }
     case "text": {
       if (input.type === "action") return stay("use_buttons");
       const v = validateRequestText(input.text);
-      return v.ok ? next("contact", { text: v.value }) : stay(v.error);
+      return v.ok ? forward({ text: v.value }) : stay(v.error);
     }
     case "contact": {
       if (input.type === "action") {
@@ -126,9 +170,18 @@ export function advanceGuestRequest(state: GuestRequestState, input: FlowInput, 
     }
     case "confirm": {
       if (input.type === "text") return stay("use_buttons");
+      if (input.action === "edit") return next("edit", {});
       if (input.action !== "send") return stay("unavailable");
       // Состояние не меняем: если создание заявки упадёт, гость нажмёт «Отправить» ещё раз.
       return { state: touched, reply: { screen: { screen: "submit" } } };
+    }
+    case "edit": {
+      if (input.type === "text") return stay("use_buttons");
+      const field = /^e=(\w+)$/.exec(input.action)?.[1] as GuestRequestEditField | undefined;
+      if (!field || !EDIT_FIELDS.includes(field)) return stay("unavailable");
+      const data = { ...touched.data };
+      delete data[field];
+      return forward({}, { ...touched, data, editFrom: touched.data });
     }
   }
 }

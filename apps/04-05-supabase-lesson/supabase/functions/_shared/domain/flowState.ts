@@ -9,8 +9,13 @@ export const FLOW_TTL_MS = 30 * 60 * 1000;
  * Шагов «комментарий» нет: пожелание гость пишет на карточке-сводке («Что-нибудь ещё?») или сразу в первой фразе
  * агенту (S09, сессия 3).
  */
-export type BookingStep = "date" | "period" | "hour" | "guests" | "name" | "contact" | "confirm";
-export type GuestRequestStep = "kind" | "text" | "contact" | "confirm";
+/** edit — меню «Что исправить?» с карточки-сводки (S09): шаг, чтобы текст гостя на нём не ушёл в пожелания. */
+export type BookingStep = "date" | "period" | "hour" | "guests" | "name" | "contact" | "confirm" | "edit";
+export type GuestRequestStep = "kind" | "text" | "contact" | "confirm" | "edit";
+
+/** Что можно исправить из меню «Что исправить?». Пожелания — только в новой брони (при изменении берутся из исходной). */
+export type BookingEditField = "date" | "time" | "guests" | "name" | "contact" | "comment";
+export type GuestRequestEditField = "kind" | "text" | "contact";
 export type GuestRequestKind = "feedback" | "complaint" | "manager_request";
 
 export const GUEST_REQUEST_KINDS: GuestRequestKind[] = ["feedback", "complaint", "manager_request"];
@@ -55,12 +60,19 @@ export interface BookingState extends FlowBase {
   data: BookingData;
   /** Есть только у сценария «изменить бронь»: имя, контакт и комментарий не спрашиваем, берём из исходной. */
   change?: BookingChange;
+  /**
+   * Идёт исправление пункта с карточки (S09): данные до него. «Назад» возвращает их и карточку — гость, передумавший
+   * на полпути, ничего не теряет. Снимается, когда сценарий снова дошёл до карточки.
+   */
+  editFrom?: BookingData;
 }
 
 export interface GuestRequestState extends FlowBase {
   flow: "guest_request";
   step: GuestRequestStep;
   data: GuestRequestData;
+  /** Как у брони: данные до исправления пункта с карточки. */
+  editFrom?: GuestRequestData;
 }
 
 export type FlowState = BookingState | GuestRequestState;
@@ -82,11 +94,16 @@ export interface FlowEnv {
   newDraftId: () => string;
 }
 
-export type FlowErrorCode = FieldError | SlotError | "use_buttons" | "unavailable" | "contact_required";
+/** correction_unclear — агент не разобрал текст на карточке (S09): карточка та же, подсказка про «Исправить». */
+export type FlowErrorCode = FieldError | SlotError | "use_buttons" | "unavailable" | "contact_required" | "correction_unclear";
 
 /** Что показать гостю: ключ экрана и данные. Тексты и клавиатуры собирает content.ts. */
+/**
+ * editing — идёт исправление пункта с карточки: на первых шагах (дата, тип обращения), где «Назад» обычно нет,
+ * он нужен — вернуться к карточке без изменений.
+ */
 export type FlowScreen =
-  | { screen: "ask_date"; dates: string[]; today: string }
+  | { screen: "ask_date"; dates: string[]; today: string; editing?: boolean }
   | { screen: "no_dates" }
   | { screen: "ask_period"; date: string; periods: PeriodId[] }
   | { screen: "ask_hour"; date: string; period: PeriodId; hours: number[] }
@@ -99,10 +116,12 @@ export type FlowScreen =
    */
   | { screen: "ask_name"; withContact: boolean; telegram: { name: string | null; username: string } | null }
   | { screen: "ask_contact"; canUseUsername: boolean; optional: boolean }
-  | { screen: "ask_kind" }
+  | { screen: "ask_kind"; editing?: boolean }
   | { screen: "ask_text"; kind: GuestRequestKind }
   /** askMore — бронь: под сводкой «Что-нибудь ещё?», текст гостя дописывается в пожелания. */
   | { screen: "confirm"; flow: FlowState["flow"]; summary: string; isChange?: boolean; askMore?: boolean }
+  /** «✏️ Исправить» на карточке: какие пункты можно поменять (S09). */
+  | { screen: "edit_menu"; flow: FlowState["flow"]; fields: (BookingEditField | GuestRequestEditField)[] }
   /** Гость подтвердил: вызывающий создаёт заявку из state.data. Состояние не меняется. */
   | { screen: "submit" };
 
@@ -121,11 +140,8 @@ export interface AdvanceResult {
 
 /**
  * Почему поле от агента не принято. Сверх ошибок ручного ввода: время без даты, поле, которое в этом сценарии
- * не меняется (имя и контакт при изменении брони), неизвестный тип обращения.
- */
-/**
- * no_telegram_username — агент передал useTelegram, а @username у гостя нет; contact_placeholder — шаблон вместо
- * настоящего ника («@username»). Оба — только из черновика агента (agentContact.ts).
+ * не меняется (имя и контакт при изменении брони), неизвестный тип обращения; useTelegram, а @username у гостя нет
+ * (no_telegram_username); шаблон вместо настоящего ника — «@username» (contact_placeholder, см. agentContact.ts).
  */
 export type DraftError = FlowErrorCode | "needs_date" | "not_editable" | "bad_kind" | "no_telegram_username" | "contact_placeholder";
 
@@ -142,8 +158,8 @@ export interface DraftOutcome<F extends string> {
 
 // ---------------------------------------------------------------- разбор из jsonb
 
-const BOOKING_STEPS: BookingStep[] = ["date", "period", "hour", "guests", "name", "contact", "confirm"];
-const GUEST_STEPS: GuestRequestStep[] = ["kind", "text", "contact", "confirm"];
+const BOOKING_STEPS: BookingStep[] = ["date", "period", "hour", "guests", "name", "contact", "confirm", "edit"];
+const GUEST_STEPS: GuestRequestStep[] = ["kind", "text", "contact", "confirm", "edit"];
 
 /**
  * jsonb из БД → состояние. null — сценария нет: пустой объект, битые данные или сценарий истёк.

@@ -4,6 +4,7 @@ import {
   VOICE_AI_OFF,
   VOICE_FAILED,
   VOICE_MANAGER_TOO_LONG,
+  VOICE_ON_CARD_FAILED,
   VOICE_ON_STEP,
   VOICE_TOO_LONG,
   VOICE_UNCLEAR,
@@ -14,29 +15,36 @@ import { isAiLimitReached } from "../../_shared/services/ai/agent.ts";
 import { transcribeAudio } from "../../_shared/services/ai/voice.ts";
 import { getAiSettings } from "../../_shared/services/aiSettings.ts";
 import { TelegramApiError } from "../../_shared/telegram/client.ts";
+import type { FlowState } from "../../_shared/domain/flowState.ts";
 import type { TelegramVoice } from "../../_shared/telegram/types.ts";
 import type { VoiceMeta } from "../../_shared/types.ts";
 import type { HandlerContext } from "../context.ts";
 import { logIncoming, reply } from "../logging.ts";
 import { handleAiText, startTyping } from "./ai.ts";
+import { handleFlowText } from "./flow.ts";
 
 /**
  * Голосовое гостя (S09, сессия 4). Куда оно идёт, решает domain/voice.ts (routeVoice). Голосовое пишется в журнал
  * в любом случае: менеджер слушает его в админке и может распознать кнопкой. Автоматически распознаётся только
  * то, что идёт агенту: расшифровка встаёт в messages.text вместо заглушки, и дальше работает обычный ход агента —
  * он читает реплику гостя из журнала.
- * hasLiveFlow — у гостя идёт пошаговый сценарий (бронь, обращение).
+ * На карточке-сводке (S09) расшифровка идёт тем же путём, что текст на карточке: агент различает поправку,
+ * пожелание и вопрос (handlers/flow.ts).
+ * flowState — живой пошаговый сценарий гостя (бронь, обращение) или null.
  */
-export async function handleVoice(ctx: HandlerContext, voice: TelegramVoice, hasLiveFlow: boolean): Promise<void> {
+export async function handleVoice(ctx: HandlerContext, voice: TelegramVoice, flowState: FlowState | null): Promise<void> {
   const handoffActive = isHandoffActive(ctx.conversation.handoff_until, new Date());
-  // Настройки AI нужны, только если голос может пойти агенту: на шаге и в ручном режиме лишнего запроса нет.
-  const settings = !hasLiveFlow && !handoffActive && ctx.llm
+  const hasLiveFlow = flowState !== null;
+  const onCard = flowState?.step === "confirm" || flowState?.step === "edit";
+  // Настройки AI нужны, только если голос может пойти агенту: на обычном шаге и в ручном режиме лишнего запроса нет.
+  const settings = (!hasLiveFlow || onCard) && !handoffActive && ctx.llm
     ? await getAiSettings(ctx.client, ctx.conversation.restaurant_id)
     : null;
   const route = routeVoice({
     durationSec: voice.duration,
     fileSize: voice.file_size,
     hasLiveFlow,
+    onCard,
     handoffActive,
     aiAvailable: settings?.aiEnabled === true,
   });
@@ -71,12 +79,14 @@ export async function handleVoice(ctx: HandlerContext, voice: TelegramVoice, has
       return;
   }
 
-  // route = "agent": settings и llm точно есть (иначе aiAvailable = false), но TypeScript этого не видит.
+  // route = "agent" | "card": settings и llm точно есть (иначе aiAvailable = false), но TypeScript этого не видит.
   if (!settings || !ctx.llm) return;
   // Лимит исчерпан — агенту нечем ответить: не распознаём (не тратим токены), ответ как при лимите у текста.
+  // На карточке — без главного меню: гость остаётся на ней, «✏️ Исправить» работает без AI.
   if (await isAiLimitReached(ctx.client, ctx.conversation, settings)) {
     await logPlaceholder();
-    await reply(ctx, AI_FALLBACK, MAIN_MENU_KEYBOARD, "text", { aiFallback: "limit" });
+    if (route === "card") await reply(ctx, VOICE_ON_CARD_FAILED, undefined, "text", { aiFallback: "limit" });
+    else await reply(ctx, AI_FALLBACK, MAIN_MENU_KEYBOARD, "text", { aiFallback: "limit" });
     return;
   }
 
@@ -98,11 +108,13 @@ export async function handleVoice(ctx: HandlerContext, voice: TelegramVoice, has
 
   if (text) {
     await logIncoming(ctx, text, "text", { voice: { ...base, ...extra, transcribedBy: "auto" } });
-    await handleAiText(ctx, settings);
+    if (route === "card" && flowState) await handleFlowText(ctx, flowState, text);
+    else await handleAiText(ctx, settings);
     return;
   }
   await logPlaceholder(extra);
   if (extra.transcribeError === "unclear") await reply(ctx, VOICE_UNCLEAR);
+  else if (route === "card") await reply(ctx, VOICE_ON_CARD_FAILED);
   else await reply(ctx, VOICE_FAILED, MAIN_MENU_KEYBOARD);
 }
 
