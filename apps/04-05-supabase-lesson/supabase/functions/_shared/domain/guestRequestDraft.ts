@@ -2,7 +2,8 @@
 // тип и текст из фразы гостя. Ложится в ТОТ ЖЕ GuestRequestState, что у кнопочного сценария S03; контакт — по его
 // правилам (для вопроса менеджеру обязателен, для отзыва и жалобы можно пропустить кнопкой). Обращение не создаёт —
 // только кнопка гостя «Отправить». Чистая функция.
-import { validateContact, validateRequestText } from "./fieldValidation.ts";
+import { resolveAgentContact } from "./agentContact.ts";
+import { validateRequestText } from "./fieldValidation.ts";
 import {
   type DraftError,
   type DraftOutcome,
@@ -20,9 +21,12 @@ export interface GuestRequestDraftInput {
   kind?: string;
   text?: string;
   contact?: string;
+  /** Гость просит связаться через его Telegram, не называя ника: контакт = @username из апдейта (agentContact.ts). */
+  useTelegram?: boolean;
 }
 
-export type GuestRequestDraftField = keyof GuestRequestDraftInput;
+/** Поля черновика для ответа модели: useTelegram — способ задать contact, а не отдельное поле. */
+export type GuestRequestDraftField = Exclude<keyof GuestRequestDraftInput, "useTelegram">;
 
 const isKind = (value: string): value is GuestRequestKind => (GUEST_REQUEST_KINDS as string[]).includes(value);
 
@@ -54,13 +58,12 @@ export function applyGuestRequestDraft(
       accepted.push("text");
     } else errors.text = v.error;
   }
-  if (input.contact !== undefined) {
-    const v = validateContact(input.contact);
-    if (v.ok) {
-      data.contact = v.value;
-      accepted.push("contact");
-    } else errors.contact = v.error;
-  }
+  // «Мой Telegram» и защита от шаблонного ника — agentContact.ts.
+  const contact = resolveAgentContact(input, env);
+  if (contact.kind === "ok") {
+    data.contact = contact.value;
+    accepted.push("contact");
+  } else if (contact.kind === "error") errors.contact = contact.error;
   // Пропуск контакта (null), сделанный кнопкой, недопустим, если тип сменился на вопрос менеджеру.
   if (data.contact === null && isContactRequired(data.kind)) delete data.contact;
 

@@ -283,8 +283,9 @@ const TOOLS: ToolDefinition[] = [
       description:
         "Fill the table booking draft with what the guest said. It does NOT create a booking: when the draft is complete the " +
         "guest sees a summary card and sends it with a button. Pass only values the guest actually gave in this conversation; " +
-        "never invent a name or a phone. Call it again to add or correct fields. Result: accepted, errors per field, missing " +
-        "(ask the guest only for these), freeHours when the time was rejected.",
+        "never invent a name, a phone or a username. Call it again to add or correct fields. Result: accepted, errors per field, " +
+        "missing (ask the guest only for these), freeHours when the time was rejected. errors.contact = no_telegram_username: " +
+        "the guest has no Telegram username, ask for a phone.",
       parameters: {
         type: "object",
         properties: {
@@ -292,7 +293,12 @@ const TOOLS: ToolDefinition[] = [
           time: { type: "string", description: "HH:00, whole hours only, 24h: 'at 7 pm' = 19:00" },
           guests: { type: "integer", description: "number of guests" },
           name: { type: "string", description: "name for the booking" },
-          contact: { type: "string", description: "phone number or Telegram @username" },
+          contact: { type: "string", description: "phone number or @username exactly as the guest gave it; never a placeholder" },
+          useTelegram: {
+            type: "boolean",
+            description: "true when the guest wants to be contacted via their Telegram without naming the username " +
+              "(\"по Телеграму\", \"в телеге\", \"по юзернейму\"): their real @username is filled in for you",
+          },
           comment: { type: "string", description: "wishes the guest mentioned: high chair, window table, occasion (all of them, replaces the previous value)" },
         },
       },
@@ -304,6 +310,7 @@ const TOOLS: ToolDefinition[] = [
         guests: typeof args.guests === "number" || typeof args.guests === "string" ? args.guests : undefined,
         name: draftString(args, "name"),
         contact: draftString(args, "contact"),
+        useTelegram: args.useTelegram === true,
         comment: draftString(args, "comment"),
       };
       const o = await inDraftQueue(ctx.flow, async () => {
@@ -331,18 +338,29 @@ const TOOLS: ToolDefinition[] = [
         "Prepare a message to the restaurant manager: when the guest asks for a human or the manager, complains, leaves " +
         "feedback, or asks something your tools have no data for. It does NOT send anything: the guest sends it with a button. " +
         "text: the guest's request in their words (a short faithful summary is fine, keep the facts). contact is required for " +
-        "manager_request; for feedback and complaint the guest may skip it with a button.",
+        "manager_request; for feedback and complaint the guest may skip it with a button. errors.contact = no_telegram_username: " +
+        "the guest has no Telegram username, ask for a phone.",
       parameters: {
         type: "object",
         properties: {
           kind: { type: "string", enum: [...GUEST_REQUEST_KINDS], description: "manager_request = question or call the manager" },
           text: { type: "string", description: "the request text, in the guest's language" },
-          contact: { type: "string", description: "phone number or Telegram @username, only if the guest gave it" },
+          contact: { type: "string", description: "phone number or @username exactly as the guest gave it; never a placeholder" },
+          useTelegram: {
+            type: "boolean",
+            description: "true when the guest wants to be contacted via their Telegram without naming the username: " +
+              "their real @username is filled in for you",
+          },
         },
       },
     },
     async run(ctx, args) {
-      const input = { kind: draftString(args, "kind"), text: draftString(args, "text"), contact: draftString(args, "contact") };
+      const input = {
+        kind: draftString(args, "kind"),
+        text: draftString(args, "text"),
+        contact: draftString(args, "contact"),
+        useTelegram: args.useTelegram === true,
+      };
       const o = await inDraftQueue(ctx.flow, async () => {
         const outcome = await draftGuestRequestFromAgent(ctx.client, ctx.conversationId, ctx.flow.state, input, ctx.guest);
         ctx.flow.state = outcome.result.state;

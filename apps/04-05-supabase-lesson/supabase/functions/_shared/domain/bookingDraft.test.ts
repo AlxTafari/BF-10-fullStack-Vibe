@@ -140,3 +140,23 @@ Deno.test("живое обращение заменяется новой бро�
   assertEquals(s.flow, "booking");
   assertEquals(s.step, "date");
 });
+
+Deno.test("контакт «по Телеграму» (useTelegram) → @username гостя, а не шаблон от модели", () => {
+  const o = applyBookingDraft(null, { date: "2026-10-14", time: "19:00", guests: 4, name: "Анна", contact: "@username", useTelegram: true }, env());
+  assertEquals((o.result.state as BookingState).data.contact, "@anna_k");
+  assertEquals((o.result.state as BookingState).step, "confirm");
+  assertEquals(o.errors, {});
+});
+
+Deno.test("шаблонный контакт без useTelegram не пишется: ошибка модели, шаг контакта", () => {
+  const o = applyBookingDraft(null, { date: "2026-10-14", time: "19:00", guests: 4, name: "Анна", contact: "@username" }, env());
+  assertEquals(o.errors, { contact: "contact_placeholder" });
+  assertEquals((o.result.state as BookingState).data.contact, undefined);
+  assertEquals(o.missing, ["contact"]);
+});
+
+Deno.test("useTelegram при изменении брони — not_editable, как любой контакт", () => {
+  const started = startBooking(env(), { replacesId: "b-1", guests: 2, name: "Анна", contact: "+306901234567", comment: null }).state;
+  const o = applyBookingDraft(started, { useTelegram: true }, env());
+  assertEquals(o.errors, { contact: "not_editable" });
+});

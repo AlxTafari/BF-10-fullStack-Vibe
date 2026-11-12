@@ -17,7 +17,8 @@ import {
   validateSlot,
 } from "./bookingRules.ts";
 import { bookingScreen, firstMissingStep, startBooking } from "./bookingFlow.ts";
-import { validateComment, validateContact, validateGuests, validateName } from "./fieldValidation.ts";
+import { resolveAgentContact } from "./agentContact.ts";
+import { validateComment, validateGuests, validateName } from "./fieldValidation.ts";
 import type { BookingData, BookingState, DraftError, DraftOutcome, FlowEnv, FlowState } from "./flowState.ts";
 import { diffDays, isValidDateString } from "./zonedTime.ts";
 
@@ -28,10 +29,13 @@ export interface BookingDraftInput {
   guests?: number | string;
   name?: string;
   contact?: string;
+  /** Гость просит связаться через его Telegram, не называя ника: контакт = @username из апдейта (agentContact.ts). */
+  useTelegram?: boolean;
   comment?: string;
 }
 
-export type BookingDraftField = keyof BookingDraftInput;
+/** Поля черновика для ответа модели: useTelegram — способ задать contact, а не отдельное поле. */
+export type BookingDraftField = Exclude<keyof BookingDraftInput, "useTelegram">;
 
 export type BookingDraftOutcome = DraftOutcome<BookingDraftField> & {
   /** Есть, если время не принято, а дата известна: свободные часы этой даты, чтобы агент предложил их гостю. */
@@ -130,7 +134,6 @@ export function applyBookingDraft(current: FlowState | null, input: BookingDraft
   // Имя, контакт, комментарий: при изменении брони они берутся из исходной и не меняются.
   const personal: [BookingDraftField, string | undefined, (s: string) => { ok: boolean; value?: unknown; error?: DraftError }][] = [
     ["name", input.name, validateName],
-    ["contact", input.contact, validateContact],
     ["comment", input.comment, validateComment],
   ];
   for (const [field, value, validate] of personal) {
@@ -145,6 +148,13 @@ export function applyBookingDraft(current: FlowState | null, input: BookingDraft
       accepted.push(field);
     } else errors[field] = v.error;
   }
+  // Контакт — отдельно: «мой Telegram» и защита от шаблонного ника (agentContact.ts).
+  const contact = resolveAgentContact(input, env);
+  if (contact.kind !== "none" && isChange) errors.contact = "not_editable";
+  else if (contact.kind === "ok") {
+    data.contact = contact.value;
+    accepted.push("contact");
+  } else if (contact.kind === "error") errors.contact = contact.error;
 
   const filled: BookingState = { ...base, data, touchedAt: env.now.toISOString() };
   const state: BookingState = { ...filled, step: firstMissingStep(filled) };

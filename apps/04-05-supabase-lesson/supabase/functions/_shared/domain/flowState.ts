@@ -123,7 +123,11 @@ export interface AdvanceResult {
  * Почему поле от агента не принято. Сверх ошибок ручного ввода: время без даты, поле, которое в этом сценарии
  * не меняется (имя и контакт при изменении брони), неизвестный тип обращения.
  */
-export type DraftError = FlowErrorCode | "needs_date" | "not_editable" | "bad_kind";
+/**
+ * no_telegram_username — агент передал useTelegram, а @username у гостя нет; contact_placeholder — шаблон вместо
+ * настоящего ника («@username»). Оба — только из черновика агента (agentContact.ts).
+ */
+export type DraftError = FlowErrorCode | "needs_date" | "not_editable" | "bad_kind" | "no_telegram_username" | "contact_placeholder";
 
 /**
  * Итог применения полей от агента к черновику. result — тот же AdvanceResult, что у кнопочного шага:

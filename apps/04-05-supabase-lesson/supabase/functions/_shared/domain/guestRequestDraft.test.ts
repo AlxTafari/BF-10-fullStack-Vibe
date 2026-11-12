@@ -51,3 +51,11 @@ Deno.test("живая бронь заменяется обращением", () 
   assertEquals(s.flow, "guest_request");
   assertEquals(s.step, "text");
 });
+
+Deno.test("обращение: useTelegram → @username гостя; без ника — no_telegram_username", () => {
+  const ok = applyGuestRequestDraft(null, { kind: "manager_request", text: "Перезвоните", useTelegram: true }, env());
+  assertEquals((ok.result.state as GuestRequestState).data.contact, "@anna_k");
+  const noNick = applyGuestRequestDraft(null, { kind: "manager_request", text: "Перезвоните", useTelegram: true }, env({ username: null }));
+  assertEquals(noNick.errors, { contact: "no_telegram_username" });
+  assertEquals(noNick.missing, ["contact"]);
+});

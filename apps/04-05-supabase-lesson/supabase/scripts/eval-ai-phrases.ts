@@ -30,6 +30,8 @@ interface Case {
   anyOf?: string[];
   /** Ни один из этих tools не должен быть вызван. */
   noneOf?: string[];
+  /** Контакт в черновике после хода (conversations.state.data.contact). */
+  expectContact?: string;
 }
 
 const CASES: Case[] = [
@@ -38,6 +40,8 @@ const CASES: Case[] = [
   { name: "меню: другой язык", phrase: "what desserts do you have?", anyOf: ["searchMenu", "listMenuCategories"] },
   { name: "аллергены", phrase: "у меня аллергия на орехи, что можно?", anyOf: ["filterMenuByAllergens"], noneOf: ["flagThreat"] },
   { name: "бронь: одной фразой", phrase: "стол на завтра в 19 на четверых", anyOf: ["draftBooking"], noneOf: ["flagThreat"] },
+  // Модель не знает ника гостя: на «по телеграму» — useTelegram, контакт = настоящий @username, а не «@username».
+  { name: "бронь: контакт по телеграму", phrase: "стол на завтра в 19 на двоих, я Анна, свяжитесь со мной по телеграму", anyOf: ["draftBooking"], expectContact: "@eval_guest" },
   { name: "бронь: побочный вопрос на шаге", phrase: "а у вас есть детские стулья?", setup: "booking_at_time", anyOf: ["listFaq", "getFaqAnswer", "getRestaurantInfo"], noneOf: ["flagThreat"] },
   { name: "бронь: время словами на шаге", phrase: "давай в восемь вечера", setup: "booking_at_time", anyOf: ["draftBooking"] },
   { name: "мои заявки", phrase: "покажи мои брони", anyOf: ["listMyRequests"] },
@@ -99,6 +103,11 @@ async function runCase(client: SupabaseClient, restaurantId: string, c: Case): P
     if (c.anyOf && !c.anyOf.some((t) => turn.tools.includes(t))) problems.push(`ждали один из: ${c.anyOf.join(", ")}`);
     const forbidden = (c.noneOf ?? []).filter((t) => turn.tools.includes(t));
     if (forbidden.length > 0) problems.push(`лишние: ${forbidden.join(", ")}`);
+    if (c.expectContact !== undefined) {
+      const { data } = await client.from("conversations").select("state").eq("id", conversation.id).single();
+      const contact = (data?.state as { data?: { contact?: unknown } } | null)?.data?.contact;
+      if (contact !== c.expectContact) problems.push(`контакт ${JSON.stringify(contact)}, ждали ${c.expectContact}`);
+    }
     return { name: c.name, ok: problems.length === 0, tools: turn.tools, problem: problems.join("; "), text: turn.text, ms };
   } finally {
     await client.from("conversations").delete().eq("id", conversation.id);
