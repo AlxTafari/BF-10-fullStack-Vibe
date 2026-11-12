@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Page } from "./cursor";
-import { type Message, applyMessageEvent, buttonData, classifyMessage, groupByDay, shouldMarkRead } from "./messages";
+import { type Message, applyMessageEvent, applyVoiceTranscript, buttonData, classifyMessage, formatVoiceDuration, groupByDay, shouldMarkRead } from "./messages";
 
 const CONV = "conv-1";
 const msg = (n: number, over: Partial<Message> = {}): Message => ({
@@ -12,6 +12,7 @@ const msg = (n: number, over: Partial<Message> = {}): Message => ({
   created_at: `2026-10-18T12:00:${String(n).padStart(2, "0")}+00:00`,
   ai: null,
   byManager: false,
+  voice: null,
   ...over,
 });
 /** Кэш «новые → старые» из сообщений с номерами from…to (from ≥ to). */
@@ -146,5 +147,28 @@ describe("shouldMarkRead", () => {
   it("нет входящих текстовых → null", () => {
     expect(shouldMarkRead(view, [msg(1, { direction: "out" })], null)).toBeNull();
     expect(shouldMarkRead(view, [], null)).toBeNull();
+  });
+});
+
+describe("голосовые (S09, сессия 4)", () => {
+  it("formatVoiceDuration: м:сс, как в Telegram", () => {
+    expect(formatVoiceDuration(0)).toBe("0:00");
+    expect(formatVoiceDuration(7)).toBe("0:07");
+    expect(formatVoiceDuration(75)).toBe("1:15");
+    expect(formatVoiceDuration(120)).toBe("2:00");
+  });
+
+  it("applyVoiceTranscript: текст вместо заглушки, распознал менеджер, прошлая ошибка снята", () => {
+    const voice = msg(2, { text: "[голосовое]", voice: { duration: 5, transcribedBy: null, error: "unclear" } });
+    const cache: Page<Message> = { rows: [msg(3), voice, msg(1)], nextCursor: null };
+    const next = applyVoiceTranscript(cache, voice.id, "стол на завтра");
+    expect(next.rows[1]).toMatchObject({ text: "стол на завтра", voice: { duration: 5, transcribedBy: "manager", error: null } });
+    expect(next.rows[0]).toBe(cache.rows[0]);
+  });
+
+  it("applyVoiceTranscript: сообщения нет в кэше или оно не голосовое — тот же объект", () => {
+    const cache: Page<Message> = { rows: [msg(1)], nextCursor: null };
+    expect(applyVoiceTranscript(cache, "нет-такого", "x")).toBe(cache);
+    expect(applyVoiceTranscript(cache, msg(1).id, "x")).toBe(cache);
   });
 });

@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { type Message, buttonData, classifyMessage } from "@/domain/messages";
 import { formatTimeHM } from "@/domain/chatTime";
+import { VoiceContent } from "./VoiceContent";
 
 /**
  * Одно сообщение. Текст гостя — НЕДОВЕРЕННЫЙ: выводим только как текст через React (экранирование), без
@@ -43,8 +44,13 @@ export function MessageItem({ message, timeZone }: { message: Message; timeZone:
             {message.ai === "reply" ? "AI-помощник" : "AI не ответил · запасной ответ"}
           </p>
         )}
-        {/* pre-wrap: боты пишут многострочно; break-words: длинное слово без пробелов не ломает вёрстку */}
-        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.text}</p>
+        {/* Голосовое (S09, сессия 4): плеер и расшифровка вместо текста — в text заглушка, пока не распознано. */}
+        {message.voice ? (
+          <VoiceContent message={message} voice={message.voice} />
+        ) : (
+          // pre-wrap: боты пишут многострочно; break-words: длинное слово без пробелов не ломает вёрстку
+          <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.text}</p>
+        )}
         <p className={cn("mt-1 text-right text-[10px]", fromGuest || isSearch ? "text-muted-foreground" : byManager ? "text-white/80" : "text-primary-foreground/70")}>
           {formatTimeHM(message.created_at, timeZone)}
         </p>

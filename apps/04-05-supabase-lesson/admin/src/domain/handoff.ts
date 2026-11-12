@@ -53,6 +53,19 @@ export function managerChatErrorText(code: string | undefined): string {
       return "Диалог не найден";
     case "unauthorized":
       return "Сессия истекла — войдите снова";
+    // Голосовые (S09, сессия 4): прослушивание и «Распознать».
+    case "not_voice":
+      return "Это не голосовое сообщение";
+    case "unavailable":
+      return "Telegram не отдал аудио — файл мог устареть";
+    case "ai_unavailable":
+      return "Распознавание недоступно: Gemini не настроен";
+    case "too_big":
+      return "Файл слишком большой для распознавания";
+    case "unclear":
+      return "Речь не разобрать";
+    case "failed":
+      return "Распознать не удалось, попробуйте ещё раз";
     default:
       return "Не удалось выполнить, попробуйте ещё раз";
   }

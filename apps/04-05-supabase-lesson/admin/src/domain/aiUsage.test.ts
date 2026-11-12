@@ -3,6 +3,7 @@ import { type AiUsageDay, periodRange, priceFor, summarizeAiUsage, zonedMidnight
 
 const row = (over: Partial<AiUsageDay>): AiUsageDay => ({
   day: "2026-11-11",
+  source: "agent",
   model: "gemini-3.5-flash-lite",
   turns: 0,
   calls: 0,
@@ -14,6 +15,8 @@ const row = (over: Partial<AiUsageDay>): AiUsageDay => ({
   fallback_timeout: 0,
   fallback_quota: 0,
   fallback_limit: 0,
+  voice_transcribed: 0,
+  voice_failed: 0,
   ...over,
 });
 
@@ -43,6 +46,25 @@ describe("summarizeAiUsage", () => {
       row({ model: "gemini-3.6-flash", day: "2027-01-01", input_tokens: 1_000_000 }),
     ]);
     expect(s.costUsd).toBeCloseTo(2.25, 10);
+  });
+
+  it("распознавание голосовых — отдельная группа: свои суммы и стоимость, в ходы агента не входит; общий итог — сумма", () => {
+    const s = summarizeAiUsage([
+      row({ turns: 1, calls: 1, input_tokens: 1_000_000, ms_total: 2000 }),
+      row({ source: "voice", calls: 3, input_tokens: 1_000_000, output_tokens: 100_000, ms_total: 1500, voice_transcribed: 2, voice_failed: 1 }),
+    ]);
+    expect(s).toMatchObject({ turns: 1, calls: 1, inputTokens: 1_000_000, avgMs: 2000 });
+    expect(s.voice).toMatchObject({ transcribed: 2, failed: 1, calls: 3, inputTokens: 1_000_000, outputTokens: 100_000, avgMs: 500 });
+    // агент: 1M × $0.30 = $0.30; голос: 1M × $0.30 + 0.1M × $2.50 = $0.55
+    expect(s.costUsd).toBeCloseTo(0.3, 10);
+    expect(s.voice.costUsd).toBeCloseTo(0.55, 10);
+    expect(s.totalCostUsd).toBeCloseTo(0.85, 10);
+  });
+
+  it("модель без цены в группе голоса — тоже в unpricedModels", () => {
+    const s = summarizeAiUsage([row({ source: "voice", model: "whisper-x", calls: 1, input_tokens: 10, voice_transcribed: 1 })]);
+    expect(s.unpricedModels).toEqual(["whisper-x"]);
+    expect(s.totalCostUsd).toBe(0);
   });
 
   it("модель без цены — в unpricedModels, в стоимость не входит; ходов нет — avgMs null", () => {

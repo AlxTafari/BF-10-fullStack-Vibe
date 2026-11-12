@@ -595,8 +595,11 @@ export type Database = {
           model: string
           ms_total: number
           output_tokens: number
+          source: string
           thought_tokens: number
           turns: number
+          voice_failed: number
+          voice_transcribed: number
         }[]
       }
       begin_manager_handoff: {

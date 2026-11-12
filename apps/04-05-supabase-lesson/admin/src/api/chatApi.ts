@@ -1,7 +1,7 @@
 import { type ConversationEventRow, type ConversationRow, applyConversationEvent, keyOfConversation, toEventRow } from "@/domain/conversations";
 import { type Cursor, type Page, PAGE_SIZE, buildPage, mergeFreshPage, mergePage } from "@/domain/cursor";
 import { type Delivery, managerChatErrorText } from "@/domain/handoff";
-import { type Message, applyMessageEvent, keyOfMessage } from "@/domain/messages";
+import { type Message, applyMessageEvent, applyVoiceTranscript, keyOfMessage } from "@/domain/messages";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { baseApi } from "./baseApi";
 import { toConversationEventRow, toConversationRow, toMessage } from "./chatMappers";
@@ -269,6 +269,50 @@ export const chatApi = baseApi.injectEndpoints({
         }
       },
     }),
+
+    // ---------------------------------------------------------------- голосовые гостя (S09, сессия 4)
+    // Подключаться к чату не нужно: слушать и распознавать можно любое голосовое своего ресторана (RLS в функции).
+
+    // Звук для плеера. Запрашивается по клику «Прослушать», а не при открытии чата: каждое — скачивание у Telegram.
+    // В кэше — строка blob:-URL, а не Blob: состояние Redux должно быть сериализуемым. URL освобождаем, когда запись
+    // кэша удаляется (keepUnusedDataFor после закрытия плеера), иначе браузер держал бы байты до перезагрузки.
+    getVoiceAudio: build.query<string, string>({
+      queryFn: async (messageId) => {
+        // manager-chat отдаёт application/octet-stream — functions.invoke возвращает Blob (см. index.ts функции).
+        const result = await invokeManagerChat<Blob>({ action: "voice_audio", message_id: messageId });
+        if ("error" in result) return result;
+        return { data: URL.createObjectURL(new Blob([result.data], { type: "audio/ogg" })) };
+      },
+      keepUnusedDataFor: 300,
+      onCacheEntryAdded: async (_messageId, { cacheDataLoaded, cacheEntryRemoved }) => {
+        try {
+          const { data } = await cacheDataLoaded;
+          await cacheEntryRemoved;
+          URL.revokeObjectURL(data);
+        } catch {
+          // запрос не удался — освобождать нечего
+        }
+      },
+    }),
+
+    // «Распознать»: расшифровка пишется в сообщение на сервере; в ленту подставляем её из ответа. Realtime шлёт только
+    // INSERT, правку сообщения он не принесёт — у другого менеджера текст появится после перезагрузки ленты.
+    transcribeVoice: build.mutation<{ text: string }, { messageId: string; conversationId: string }>({
+      queryFn: ({ messageId }) => invokeManagerChat<{ text: string }>({ action: "voice_transcribe", message_id: messageId }),
+      onQueryStarted: async ({ messageId, conversationId }, { dispatch, queryFulfilled }) => {
+        try {
+          const { data } = await queryFulfilled;
+          dispatch(
+            chatApi.util.updateQueryData("getMessages", { conversationId, cursor: null }, (draft) => {
+              const next = applyVoiceTranscript(draft, messageId, data.text);
+              if (next !== draft) draft.rows = next.rows;
+            }),
+          );
+        } catch {
+          // ошибку показывает компонент
+        }
+      },
+    }),
   }),
 });
 
@@ -283,6 +327,8 @@ export const {
   useJoinChatMutation,
   useSendManagerReplyMutation,
   useLeaveChatMutation,
+  useGetVoiceAudioQuery,
+  useTranscribeVoiceMutation,
 } = chatApi;
 
 // ---------------------------------------------------------------- подгрузка и вливание событий

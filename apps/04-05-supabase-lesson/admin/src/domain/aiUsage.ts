@@ -1,5 +1,6 @@
-// Статистика AI-помощника (S09, сессия 5). Чистые функции: без React, сети и Redux.
-// Источник — RPC ai_usage_daily: суммы расхода из messages.meta по дням (в поясе ресторана) и моделям.
+// Статистика AI-помощника (S09, сессии 5 и 4). Чистые функции: без React, сети и Redux.
+// Источник — RPC ai_usage_daily: суммы расхода из messages.meta по дням (в поясе ресторана), источнику и моделям.
+// Источники: agent — ответы агента и запасные ответы; voice — распознавание голосовых (автоматическое и по кнопке).
 // В БД хранятся токены, а не деньги: цены меняются, поэтому стоимость считается здесь, по таблице цен с датами.
 import { dayKey } from "./chatTime";
 import { zonedParts } from "./time";
@@ -8,6 +9,8 @@ import { zonedParts } from "./time";
 export interface AiUsageDay {
   /** Календарный день в поясе ресторана, "2026-11-11". */
   day: string;
+  /** agent — ходы агента и запасные ответы; voice — распознавание голосовых. Строка БД — text, поэтому string. */
+  source: string;
   /** '' — запасной ответ без вызова модели (лимит, сбой до первого запроса). */
   model: string;
   turns: number;
@@ -20,6 +23,9 @@ export interface AiUsageDay {
   fallback_timeout: number;
   fallback_quota: number;
   fallback_limit: number;
+  /** Только у voice: распознано / модель вызвана, но текста нет (речь не разобрать, сбой). */
+  voice_transcribed: number;
+  voice_failed: number;
 }
 
 /**
@@ -43,6 +49,20 @@ export function priceFor(model: string, day: string) {
   return found;
 }
 
+/** Распознавание голосовых за период — отдельная группа расходов. */
+export interface VoiceUsageSummary {
+  transcribed: number;
+  failed: number;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  thoughtTokens: number;
+  /** Среднее время распознавания, мс; null — вызовов не было. */
+  avgMs: number | null;
+  costUsd: number;
+}
+
+/** Поля агента — на верхнем уровне (как до голоса), распознавание — в voice, общая стоимость — totalCostUsd. */
 export interface AiUsageSummary {
   turns: number;
   calls: number;
@@ -52,10 +72,21 @@ export interface AiUsageSummary {
   /** Среднее время ответа агента, мс; null — ходов не было. */
   avgMs: number | null;
   fallbacks: { error: number; timeout: number; quota: number; limit: number };
-  /** Оценка стоимости в долларах по моделям с известной ценой. */
+  /** Оценка стоимости ответов агента в долларах по моделям с известной ценой. */
   costUsd: number;
-  /** Модели с расходом, но без цены в MODEL_PRICES: их стоимость в costUsd не вошла — экран об этом говорит. */
+  voice: VoiceUsageSummary;
+  /** Агент + распознавание. */
+  totalCostUsd: number;
+  /** Модели с расходом, но без цены в MODEL_PRICES (в любой группе): их стоимость не вошла — экран об этом говорит. */
   unpricedModels: string[];
+}
+
+/** Стоимость строки по цене модели на её день; null — цены нет. Токенов нет — 0 (запасной ответ без модели). */
+function rowCost(r: AiUsageDay): number | null {
+  if (r.input_tokens + r.output_tokens + r.thought_tokens === 0) return 0;
+  const price = priceFor(r.model, r.day);
+  if (!price) return null;
+  return (r.input_tokens * price.inputPer1M + (r.output_tokens + r.thought_tokens) * price.outputPer1M) / 1_000_000;
 }
 
 export function summarizeAiUsage(rows: AiUsageDay[]): AiUsageSummary {
@@ -68,11 +99,30 @@ export function summarizeAiUsage(rows: AiUsageDay[]): AiUsageSummary {
     avgMs: null,
     fallbacks: { error: 0, timeout: 0, quota: 0, limit: 0 },
     costUsd: 0,
+    voice: { transcribed: 0, failed: 0, calls: 0, inputTokens: 0, outputTokens: 0, thoughtTokens: 0, avgMs: null, costUsd: 0 },
+    totalCostUsd: 0,
     unpricedModels: [],
   };
   let msTotal = 0;
+  let voiceMsTotal = 0;
   const unpriced = new Set<string>();
   for (const r of rows) {
+    const cost = rowCost(r);
+    if (cost === null) unpriced.add(r.model || "неизвестная модель");
+
+    if (r.source === "voice") {
+      const v = s.voice;
+      v.transcribed += r.voice_transcribed;
+      v.failed += r.voice_failed;
+      v.calls += r.calls;
+      v.inputTokens += r.input_tokens;
+      v.outputTokens += r.output_tokens;
+      v.thoughtTokens += r.thought_tokens;
+      voiceMsTotal += r.ms_total;
+      v.costUsd += cost ?? 0;
+      continue;
+    }
+
     s.turns += r.turns;
     s.calls += r.calls;
     s.inputTokens += r.input_tokens;
@@ -83,17 +133,11 @@ export function summarizeAiUsage(rows: AiUsageDay[]): AiUsageSummary {
     s.fallbacks.timeout += r.fallback_timeout;
     s.fallbacks.quota += r.fallback_quota;
     s.fallbacks.limit += r.fallback_limit;
-
-    const tokens = r.input_tokens + r.output_tokens + r.thought_tokens;
-    if (tokens === 0) continue; // запасной ответ без вызова модели ничего не стоит
-    const price = priceFor(r.model, r.day);
-    if (!price) {
-      unpriced.add(r.model || "неизвестная модель");
-      continue;
-    }
-    s.costUsd += (r.input_tokens * price.inputPer1M + (r.output_tokens + r.thought_tokens) * price.outputPer1M) / 1_000_000;
+    s.costUsd += cost ?? 0;
   }
   s.avgMs = s.turns > 0 ? Math.round(msTotal / s.turns) : null;
+  s.voice.avgMs = s.voice.calls > 0 ? Math.round(voiceMsTotal / s.voice.calls) : null;
+  s.totalCostUsd = s.costUsd + s.voice.costUsd;
   s.unpricedModels = [...unpriced].sort();
   return s;
 }

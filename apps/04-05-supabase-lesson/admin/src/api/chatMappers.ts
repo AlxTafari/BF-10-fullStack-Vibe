@@ -32,6 +32,20 @@ function toAiMark(meta: unknown): Message["ai"] {
   return typeof meta.aiFallback === "string" ? "fallback" : null;
 }
 
+/**
+ * Голосовое из messages.meta.voice (S09, сессия 4). Нет voice — null. Неверные поля не роняют сообщение: голосовое
+ * без длительности показываем с 0:00, неизвестный transcribedBy — как «не распознано» (кнопка снова доступна).
+ */
+function toVoice(meta: unknown): Message["voice"] {
+  if (!isRecord(meta) || !isRecord(meta.voice)) return null;
+  const { duration, transcribedBy, transcribeError } = meta.voice;
+  return {
+    duration: typeof duration === "number" ? duration : 0,
+    transcribedBy: transcribedBy === "auto" || transcribedBy === "manager" ? transcribedBy : null,
+    error: str(transcribeError) ? transcribeError : null,
+  };
+}
+
 /** Строка messages (ответ RPC или payload Realtime INSERT) → Message. */
 export function toMessage(row: unknown): Message | null {
   if (!isRecord(row)) return null;
@@ -39,7 +53,7 @@ export function toMessage(row: unknown): Message | null {
   if (!str(id) || !str(conversation_id) || !direction(dir) || !str(text) || !str(created_at)) return null;
   if (kind !== "text" && kind !== "button" && kind !== "search") return null;
   const byManager = isRecord(row.meta) && row.meta.manager === true;
-  return { id, conversation_id, direction: dir, kind, text, created_at, ai: toAiMark(row.meta), byManager };
+  return { id, conversation_id, direction: dir, kind, text, created_at, ai: toAiMark(row.meta), byManager, voice: toVoice(row.meta) };
 }
 
 /** Строка ответа list_conversations_page → ConversationRow. */

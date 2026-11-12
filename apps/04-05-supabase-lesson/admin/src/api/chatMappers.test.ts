@@ -20,6 +20,18 @@ describe("toMessage: пометка AI из meta (S09)", () => {
   });
 });
 
+describe("toMessage: голосовое из meta.voice (S09, сессия 4)", () => {
+  it("длительность, кем распознано, прошлая ошибка; без voice — null", () => {
+    expect(toMessage(message({ voice: { fileId: "f", duration: 12, transcribedBy: "auto" } }))?.voice).toEqual({ duration: 12, transcribedBy: "auto", error: null });
+    expect(toMessage(message({ voice: { fileId: "f", duration: 3, transcribeError: "unclear" } }))?.voice).toEqual({ duration: 3, transcribedBy: null, error: "unclear" });
+    expect(toMessage(message({ ai: true, model: "m", tools: [] }))?.voice).toBeNull();
+  });
+
+  it("кривые поля не роняют сообщение", () => {
+    expect(toMessage(message({ voice: { duration: "12", transcribedBy: "robot" } }))?.voice).toEqual({ duration: 0, transcribedBy: null, error: null });
+  });
+});
+
 describe("toConversationEventRow: пометка угрозы (S09)", () => {
   const base = {
     id: "c1",

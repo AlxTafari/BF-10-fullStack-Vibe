@@ -31,6 +31,7 @@ const FALLBACK_LABELS = {
 
 /**
  * «Статистика AI» (S09 §2, сессия 5): ходы агента, токены, оценка стоимости, время ответа, запасные ответы.
+ * Сессия 4: распознавание голосовых — отдельный блок; стоимость сверху — общая, с разбивкой по группам.
  * Без графиков: менеджеру нужны итоги за период, а не форма ряда. Периоды — по календарю ресторана.
  */
 export function AiStatsScreen() {
@@ -84,8 +85,8 @@ export function AiStatsScreen() {
             <Stat label="Ответов AI" value={formatCount(summary.turns)} hint={`вызовов модели: ${formatCount(summary.calls)}`} />
             <Stat
               label="Оценка стоимости"
-              value={formatUsd(summary.costUsd)}
-              hint={summary.turns > 0 ? `≈ ${formatUsd(summary.costUsd / summary.turns)} за ответ` : "по ценам Gemini API"}
+              value={formatUsd(summary.totalCostUsd)}
+              hint={`ответы ${formatUsd(summary.costUsd)} · голос ${formatUsd(summary.voice.costUsd)}`}
             />
             <Stat label="Среднее время ответа" value={summary.avgMs === null ? "—" : `${(summary.avgMs / 1000).toFixed(1)} с`} />
             <Stat
@@ -97,7 +98,7 @@ export function AiStatsScreen() {
 
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-md border p-4">
-              <h2 className="mb-2 text-sm font-semibold">Токены</h2>
+              <h2 className="mb-2 text-sm font-semibold">Токены ответов AI</h2>
               <dl className="space-y-1 text-sm">
                 <Row label="Вход (вопрос, история, данные tools)" value={formatCount(summary.inputTokens)} />
                 <Row label="Выход (ответы)" value={formatCount(summary.outputTokens)} />
@@ -110,6 +111,20 @@ export function AiStatsScreen() {
                 {(Object.keys(FALLBACK_LABELS) as (keyof typeof FALLBACK_LABELS)[]).map((k) => (
                   <Row key={k} label={FALLBACK_LABELS[k]} value={formatCount(summary.fallbacks[k])} />
                 ))}
+              </dl>
+            </div>
+            <div className="rounded-md border p-4 md:col-span-2">
+              <h2 className="mb-2 text-sm font-semibold">Распознавание голосовых</h2>
+              <dl className="grid gap-x-6 gap-y-1 text-sm md:grid-cols-2">
+                <Row label="Распознано" value={formatCount(summary.voice.transcribed)} hint="для AI и по кнопке «Распознать»" />
+                <Row label="Не разобрано или сбой" value={formatCount(summary.voice.failed)} hint="вызов модели был, текста нет" />
+                <Row label="Токены: вход (аудио)" value={formatCount(summary.voice.inputTokens)} />
+                <Row label="Токены: выход и «размышления»" value={formatCount(summary.voice.outputTokens + summary.voice.thoughtTokens)} />
+                <Row
+                  label="Среднее время распознавания"
+                  value={summary.voice.avgMs === null ? "—" : `${(summary.voice.avgMs / 1000).toFixed(1)} с`}
+                />
+                <Row label="Стоимость" value={formatUsd(summary.voice.costUsd)} />
               </dl>
             </div>
           </div>

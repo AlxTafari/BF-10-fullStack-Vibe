@@ -1,12 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
+import { createLlmFromEnv } from "../_shared/services/ai/llm.ts";
 import { joinChat, leaveChat, type ManagerChatDeps, sendManagerReply } from "../_shared/services/managerChat.ts";
+import { type DownloadFile, getVoiceAudio, transcribeVoiceMessage } from "../_shared/services/voiceMessages.ts";
 import { createServiceClient } from "../_shared/supabaseClient.ts";
 import { createTelegramClient, TelegramApiError } from "../_shared/telegram/client.ts";
 
-// Менеджер в диалоге (S06b): подключение, ответ гостю, отключение. Вызывает админка (supabase.functions.invoke).
+// Менеджер в диалоге (S06b): подключение, ответ гостю, отключение. Голосовые гостя (S09, сессия 4): звук для плеера
+// и распознавание по кнопке — подключаться к чату для них не нужно. Вызывает админка (supabase.functions.invoke).
 // verify_jwt = true (по умолчанию): без токена Supabase не пропустит запрос сюда. Членство в ресторане проверяют
-// RPC под JWT менеджера — здесь только разбор запроса и Telegram.
-// Тело: { action: "join" | "leave", conversation_id } или { action: "reply", conversation_id, text }.
+// RPC и RLS под JWT менеджера — здесь только разбор запроса и Telegram.
+// Тело: { action: "join" | "leave", conversation_id }, { action: "reply", conversation_id, text }
+// или { action: "voice_audio" | "voice_transcribe", message_id }.
 
 // Админка живёт на другом домене (GitHub Pages / localhost): браузер сначала шлёт preflight OPTIONS.
 // Авторизация — заголовком, не cookie, поэтому «*» безопасно: чужой сайт без токена менеджера ничего не сделает.
@@ -21,7 +25,24 @@ function json(body: unknown, status = 200): Response {
 }
 
 /** Ошибка сервиса → HTTP-статус. Код ошибки в теле — его разбирает админка. */
-const ERROR_STATUS = { not_found: 404, handoff_inactive: 409, invalid_text: 400 } as const;
+const ERROR_STATUS = {
+  not_found: 404,
+  handoff_inactive: 409,
+  invalid_text: 400,
+  not_voice: 400,
+  // Голосовые: Telegram не отдал файл / Gemini не настроен / файл больше предела / речь не разобрать / сбой модели.
+  unavailable: 502,
+  ai_unavailable: 503,
+  too_big: 413,
+  unclear: 422,
+  failed: 502,
+} as const;
+
+const CHAT_ACTIONS = ["join", "reply", "leave"];
+const VOICE_ACTIONS = ["voice_audio", "voice_transcribe"];
+
+/** Предел файла для прослушивания: столько отдаёт getFile у Telegram. Голосовое до 2 минут — около 1 МБ. */
+const LISTEN_MAX_BYTES = 20 * 1024 * 1024;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS });
@@ -31,16 +52,16 @@ Deno.serve(async (req: Request) => {
   const token = authorization?.replace(/^Bearer\s+/i, "");
   if (!token) return json({ error: "unauthorized" }, 401);
 
-  let body: { action?: unknown; conversation_id?: unknown; text?: unknown };
+  let body: { action?: unknown; conversation_id?: unknown; message_id?: unknown; text?: unknown };
   try {
     body = await req.json();
   } catch {
     return json({ error: "bad_request" }, 400);
   }
-  const conversationId = body.conversation_id;
-  if (typeof conversationId !== "string" || !["join", "reply", "leave"].includes(String(body.action))) {
-    return json({ error: "bad_request" }, 400);
-  }
+  const action = String(body.action);
+  // Действия чата адресуются диалогом, голосовые — сообщением.
+  const targetId = CHAT_ACTIONS.includes(action) ? body.conversation_id : VOICE_ACTIONS.includes(action) ? body.message_id : undefined;
+  if (typeof targetId !== "string") return json({ error: "bad_request" }, 400);
 
   const url = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
@@ -76,12 +97,34 @@ Deno.serve(async (req: Request) => {
     },
   };
 
+  // Скачивание голосового по file_id. Ошибку Telegram разбираем здесь (ADR-008), в лог — только код.
+  const download: DownloadFile = async (fileId) => {
+    try {
+      return (await tg.downloadFile(fileId, LISTEN_MAX_BYTES)).bytes;
+    } catch (error) {
+      console.error("manager-chat: голосовое не скачано", error instanceof TelegramApiError ? `telegram ${error.errorCode}` : "network");
+      return null;
+    }
+  };
+
   try {
-    const result = body.action === "join"
-      ? await joinChat(deps, conversationId)
-      : body.action === "leave"
-      ? await leaveChat(deps, conversationId)
-      : await sendManagerReply(deps, { conversationId, managerId: userData.user.id, text: body.text });
+    if (action === "voice_audio") {
+      const audio = await getVoiceAudio({ userClient, download }, targetId);
+      if (!audio.ok) return json({ error: audio.error }, ERROR_STATUS[audio.error]);
+      // octet-stream, а не audio/ogg: supabase-js (functions.invoke) отдаёт Blob только для octet-stream, остальное
+      // читает как текст и портит байты. Тип для плеера админка ставит сама.
+      // slice(): копия с типом Uint8Array<ArrayBuffer> — Response не принимает Uint8Array<ArrayBufferLike> (типы TS 5.7+).
+      return new Response(audio.bytes.slice(), {
+        headers: { ...CORS_HEADERS, "Content-Type": "application/octet-stream", "Cache-Control": "private, max-age=3600" },
+      });
+    }
+    const result = action === "voice_transcribe"
+      ? await transcribeVoiceMessage({ userClient, serviceClient: deps.serviceClient, download, llm: createLlmFromEnv() }, targetId)
+      : action === "join"
+      ? await joinChat(deps, targetId)
+      : action === "leave"
+      ? await leaveChat(deps, targetId)
+      : await sendManagerReply(deps, { conversationId: targetId, managerId: userData.user.id, text: body.text });
     if (!result.ok) return json({ error: result.error }, ERROR_STATUS[result.error]);
     return json(result);
   } catch (error) {

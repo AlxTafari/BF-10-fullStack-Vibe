@@ -58,3 +58,28 @@ export async function countAiReplies(
   if (error) throw error;
   return count ?? 0;
 }
+
+/**
+ * Одно сообщение по id (S09: голосовое для админки). Клиент с JWT менеджера — RLS (messages_select) отдаёт только
+ * сообщения его ресторана: чужое или несуществующее = null, различать их наружу не нужно.
+ */
+export async function getMessageById(
+  client: SupabaseClient,
+  id: string,
+): Promise<{ id: string; conversationId: string; text: string; meta: Record<string, unknown> | null } | null> {
+  const { data, error } = await client.from("messages").select("id, conversation_id, text, meta").eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return { id: data.id, conversationId: data.conversation_id, text: data.text, meta: data.meta };
+}
+
+/** Текст и meta сообщения (S09: расшифровка голосового по кнопке менеджера). Только service role: у менеджера нет update. */
+export async function updateMessageTextAndMeta(
+  client: SupabaseClient,
+  id: string,
+  text: string,
+  meta: MessageMeta,
+): Promise<void> {
+  const { error } = await client.from("messages").update({ text, meta }).eq("id", id);
+  if (error) throw error;
+}

@@ -5,7 +5,8 @@
 //  3. запись клиентом запрещена (insert / update / delete); единственная запись — mark_conversation_read;
 //  4. триггер последнего сообщения (в т.ч. не по порядку), unread_count, потолок 100, монотонность отметки;
 //  5. Realtime: свой менеджер получает INSERT сообщения и UPDATE диалога, чужой — нет; формат метки = как у RPC;
-//  6. AI-слой (S09): пометка угрозы в списке, «Разобрано» (resolve_conversation_flag), статистика ai_usage_daily;
+//  6. AI-слой (S09): пометка угрозы в списке, «Разобрано» (resolve_conversation_flag), статистика ai_usage_daily
+//     (агент и распознавание голосовых — отдельными группами source);
 //  7. ручной режим (S06b): подключение, продление, отключение — только свой менеджер; истёкший режим не продлевается.
 // Запуск: pnpm test (нужны SUPABASE_* в .env корня; без них файл пропускается). Данные свои, чистятся в afterAll.
 import { type RealtimeChannel, type SupabaseClient, createClient } from "@supabase/supabase-js";
@@ -401,7 +402,7 @@ describe.skipIf(!enabled)("Чат: курсор, RLS, триггер, непро
       expect((await managerA.rpc("resolve_conversation_flag", { p_conversation_id: conv })).error).toBeNull();
     });
 
-    it("ai_usage_daily: суммы по дню (в зоне ресторана) и модели, запасные ответы по причинам; чужой ресторан не виден", async () => {
+    it("ai_usage_daily: суммы по дню (в зоне ресторана), источнику и модели, запасные ответы по причинам; чужой ресторан не виден", async () => {
       await service.from("restaurants").update({ timezone: "Europe/Athens" }).eq("id", restaurantA);
       const conv = await conversation(restaurantA);
       const ai = (inputTokens: number, ms: number) => ({ ai: true, model: "m1", tools: [], calls: 2, inputTokens, outputTokens: 10, thoughtTokens: 5, ms });
@@ -412,17 +413,25 @@ describe.skipIf(!enabled)("Чат: курсор, RLS, триггер, непро
         { conversation_id: conv, direction: "out", kind: "text", text: "f1", created_at: "2026-06-03T11:00:00+00:00", meta: { aiFallback: "limit" } },
         { conversation_id: conv, direction: "out", kind: "text", text: "f2", created_at: "2026-06-03T12:00:00+00:00", meta: { aiFallback: "timeout", model: "m1", calls: 1, inputTokens: 50, outputTokens: 0, thoughtTokens: 0, ms: 9000 } },
         { conversation_id: conv, direction: "out", kind: "text", text: "plain", created_at: "2026-06-03T13:00:00+00:00" },
+        // Голосовые (сессия 4): распознанное, «не разобрать» (вызов оплачен) и без вызова модели (в статистику не идёт).
+        { conversation_id: conv, direction: "in", kind: "text", text: "v1", created_at: "2026-06-03T14:00:00+00:00", meta: { voice: { fileId: "f1", duration: 5, transcribedBy: "auto", model: "v1", calls: 1, inputTokens: 160, outputTokens: 20, thoughtTokens: 0, ms: 700 } } },
+        { conversation_id: conv, direction: "in", kind: "text", text: "[голосовое]", created_at: "2026-06-03T14:10:00+00:00", meta: { voice: { fileId: "f2", duration: 3, transcribeError: "unclear", model: "v1", calls: 1, inputTokens: 100, outputTokens: 5, thoughtTokens: 0, ms: 300 } } },
+        { conversation_id: conv, direction: "in", kind: "text", text: "[голосовое]", created_at: "2026-06-03T14:20:00+00:00", meta: { voice: { fileId: "f3", duration: 90 } } },
       ]);
       expect(res.error).toBeNull();
 
       const range = { p_from: "2026-06-01T00:00:00+00:00", p_to: "2026-06-05T00:00:00+00:00" };
       const mine = await managerA.rpc("ai_usage_daily", range);
       expect(mine.error).toBeNull();
-      const rows = (mine.data ?? []) as { model: string }[];
+      const rows = (mine.data ?? []) as { model: string; source: string }[];
       const m1 = rows.find((r) => r.model === "m1");
-      expect(m1).toMatchObject({ day: "2026-06-03", turns: 2, calls: 5, input_tokens: 450, output_tokens: 20, thought_tokens: 10, ms_total: 4000, fallback_timeout: 1 });
+      expect(m1).toMatchObject({ day: "2026-06-03", source: "agent", turns: 2, calls: 5, input_tokens: 450, output_tokens: 20, thought_tokens: 10, ms_total: 4000, fallback_timeout: 1 });
       // Запасной ответ без модели — отдельной строкой с model = ''.
-      expect(rows.find((r) => r.model === "")).toMatchObject({ day: "2026-06-03", turns: 0, fallback_limit: 1 });
+      expect(rows.find((r) => r.model === "")).toMatchObject({ day: "2026-06-03", source: "agent", turns: 0, fallback_limit: 1 });
+      // Распознавание — своя группа; голосовое без модели не учтено.
+      expect(rows.filter((r) => r.source === "voice")).toEqual([
+        expect.objectContaining({ day: "2026-06-03", model: "v1", turns: 0, calls: 2, input_tokens: 260, output_tokens: 25, ms_total: 1000, voice_transcribed: 1, voice_failed: 1 }),
+      ]);
 
       expect((await managerB.rpc("ai_usage_daily", range)).data).toEqual([]);
       expect((await anon.rpc("ai_usage_daily", range)).error).not.toBeNull();

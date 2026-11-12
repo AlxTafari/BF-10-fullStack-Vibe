@@ -18,6 +18,38 @@ export interface Message {
   ai: "reply" | "fallback" | null;
   /** Из messages.meta (S06b): реплику написал менеджер из админки. */
   byManager: boolean;
+  /** Из messages.meta.voice (S09, сессия 4): голосовое гостя; null — обычное сообщение. */
+  voice: VoiceInfo | null;
+}
+
+/**
+ * Голосовое гостя. Аудио у нас не хранится: звук отдаёт Edge Function manager-chat (скачивает у Telegram).
+ * transcribedBy — кто распознал (auto — бот для AI-помощника, manager — кнопка); null — текста нет, в text заглушка.
+ * error — почему прошлое распознавание не дало текста (unclear — речь не разобрать, остальное — сбой); null — не было.
+ */
+export interface VoiceInfo {
+  duration: number;
+  transcribedBy: "auto" | "manager" | null;
+  error: string | null;
+}
+
+/** 75 → "1:15": длительность голосового, как в Telegram. */
+export function formatVoiceDuration(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Расшифровка по кнопке → кэш ленты: текст вместо заглушки, «распознал менеджер», прошлая ошибка снята. Возвращает
+ * ТОТ ЖЕ объект, если сообщения в кэше нет (диалог переключили, пока шёл запрос).
+ */
+export function applyVoiceTranscript(cache: Page<Message>, messageId: string, text: string): Page<Message> {
+  const index = cache.rows.findIndex((r) => r.id === messageId);
+  const row = cache.rows[index];
+  if (!row?.voice) return cache;
+  const rows = [...cache.rows];
+  rows[index] = { ...row, text, voice: { ...row.voice, transcribedBy: "manager", error: null } };
+  return { ...cache, rows };
 }
 
 export const keyOfMessage = (m: Message): Cursor => ({ at: m.created_at, id: m.id });
