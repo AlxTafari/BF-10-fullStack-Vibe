@@ -36,6 +36,10 @@ function cspMeta(supabaseUrl: string | undefined): Plugin {
         "style-src 'self' 'unsafe-inline'",
         `connect-src 'self' ${http} ${ws}`,
         "img-src 'self' data: https:",
+        // Голосовые гостя (S09): плеер играет blob:-URL, собранный из ответа manager-chat. Без директивы действует
+        // default-src 'self', и <audio> молча не грузит blob: (скачивание по той же ссылке при этом работает).
+        // blob: создаёт только код этой страницы на своём origin — внешний адрес через него не загрузить.
+        "media-src 'self' blob:",
         "font-src 'self'",
         "object-src 'none'",
         "base-uri 'self'",

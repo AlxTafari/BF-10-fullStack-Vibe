@@ -36,8 +36,9 @@ export function VoiceContent({ message, voice }: { message: Message; voice: Voic
 }
 
 /**
- * Звук грузится только по клику: каждое прослушивание — скачивание у Telegram через Edge Function. OGG/Opus играют
- * Chrome и Firefox; если браузер не смог (старый Safari) — ссылка «скачать», файл откроется в плеере системы.
+ * Звук грузится только по клику: каждое прослушивание — скачивание у Telegram через Edge Function. Плееру нужен
+ * `media-src blob:` в CSP (vite.config.ts). Если браузер всё же не смог (формат, политика) — ссылка «Скачать»,
+ * файл откроется в плеере системы.
  */
 function VoicePlayer({ messageId }: { messageId: string }) {
   const [requested, setRequested] = useState(false);
@@ -67,7 +68,7 @@ function VoicePlayer({ messageId }: { messageId: string }) {
       <audio controls autoPlay src={audio.data} className="h-8 w-64 max-w-full" onError={() => setPlaybackFailed(true)} />
       {playbackFailed && (
         <p className="text-xs text-muted-foreground">
-          Браузер не воспроизводит этот формат (OGG).{" "}
+          Браузер не смог воспроизвести аудио.{" "}
           <a className="underline underline-offset-2" href={audio.data} download={`voice-${messageId}.ogg`}>
             Скачать
           </a>
