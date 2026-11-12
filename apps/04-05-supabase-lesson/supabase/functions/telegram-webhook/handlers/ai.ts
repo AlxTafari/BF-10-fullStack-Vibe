@@ -95,9 +95,9 @@ function fallbackMeta(turn: Extract<AgentTurnResult, { kind: "fallback" }>): Mes
 
 /**
  * «Печатает…» сразу и каждые TYPING_REFRESH_MS, пока идёт ход. Индикатор — украшение: сбой Telegram здесь
- * не должен сломать ответ, ошибки глотаем. Возвращает функцию остановки.
+ * не должен сломать ответ, ошибки глотаем. Возвращает функцию остановки. Нужен и распознаванию голоса (handlers/voice.ts).
  */
-function startTyping(ctx: HandlerContext): () => void {
+export function startTyping(ctx: HandlerContext): () => void {
   const send = () => ctx.tg.sendChatAction(ctx.chatId, "typing").catch(() => {});
   send();
   const timer = setInterval(send, TYPING_REFRESH_MS);

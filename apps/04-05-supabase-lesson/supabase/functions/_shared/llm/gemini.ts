@@ -1,7 +1,16 @@
 // Обёртка над SDK Gemini (S09). Единственное место, где импортируется @google/genai (правило check:layers):
 // наружу — только наши типы из types.ts. По образцу _shared/telegram/client.ts.
 import { ApiError, type Content, FunctionCallingConfigMode, GoogleGenAI, type Part } from "@google/genai";
-import { type LlmClient, LlmError, type LlmMessage, type LlmRequest, type LlmResponse, type LlmUsage } from "./types.ts";
+import {
+  type LlmClient,
+  LlmError,
+  type LlmMessage,
+  type LlmRequest,
+  type LlmResponse,
+  type LlmTranscribeRequest,
+  type LlmTranscription,
+  type LlmUsage,
+} from "./types.ts";
 
 /**
  * generateContent, а не чат SDK и не Interactions API: у Google ничего не хранится, каждый вызов несёт
@@ -66,7 +75,67 @@ export function createGeminiClient(apiKey: string, model: string): LlmClient {
       if (!text) throw new LlmError("bad_response", `empty response, finishReason=${response.candidates?.[0]?.finishReason}`);
       return { kind: "text", text, usage };
     },
+
+    async transcribe(request: LlmTranscribeRequest): Promise<LlmTranscription> {
+      const signal = AbortSignal.timeout(request.timeoutMs);
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model,
+          // Аудио inline (base64): до 20 МБ на запрос, у нас предел меньше (VOICE_MAX_BYTES). Files API не нужен —
+          // он для файлов, которые переиспользуются в нескольких запросах.
+          contents: [{ role: "user", parts: [{ inlineData: { mimeType: request.mimeType, data: toBase64(request.audio) } }] }],
+          config: {
+            systemInstruction: request.system,
+            // Структурированный ответ: модель обязана вернуть JSON этой формы.
+            responseMimeType: "application/json",
+            responseJsonSchema: TRANSCRIPTION_SCHEMA,
+            abortSignal: signal,
+          },
+        });
+      } catch (error) {
+        throw toLlmError(error, signal);
+      }
+      const usage = toUsage(response.usageMetadata);
+      const parsed = parseTranscription(textOf(response.candidates?.[0]?.content));
+      if (!parsed) throw new LlmError("bad_response", `bad transcription, finishReason=${response.candidates?.[0]?.finishReason}`);
+      return { ...parsed, usage };
+    },
   };
+}
+
+const TRANSCRIPTION_SCHEMA = {
+  type: "object",
+  properties: {
+    text: { type: "string", description: "What the guest said, verbatim. Empty if unclear." },
+    unclear: { type: "boolean", description: "True if there is no intelligible speech." },
+  },
+  required: ["text", "unclear"],
+};
+
+/** JSON распознавателя → наша структура. Не та форма или не JSON — null (вызывающий бросит bad_response). */
+export function parseTranscription(raw: string | undefined): { text: string; unclear: boolean } | null {
+  if (!raw) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof value !== "object" || value === null) return null;
+  const { text, unclear } = value as Record<string, unknown>;
+  if (typeof text !== "string" || typeof unclear !== "boolean") return null;
+  return { text, unclear };
+}
+
+/**
+ * Байты → base64 для inlineData. Кусками: String.fromCharCode(...bytes) на целом файле упрётся в предел
+ * числа аргументов функции (около 100 тыс.), а голосовое — сотни килобайт.
+ */
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
 }
 
 /** Наше сообщение → Content SDK. Результаты tools у Gemini отправляются от роли user. */

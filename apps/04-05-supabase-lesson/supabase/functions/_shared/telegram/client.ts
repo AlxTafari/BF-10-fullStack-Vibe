@@ -26,6 +26,8 @@ export function isMessageGoneError(error: unknown): boolean {
 
 export function createTelegramClient(botToken: string) {
   const apiBase = `https://api.telegram.org/bot${botToken}`;
+  // Файлы скачиваются с отдельного адреса. В нём токен бота: URL не уходит ни в лог, ни в ошибку, ни наружу.
+  const fileBase = `https://api.telegram.org/file/bot${botToken}`;
 
   async function call<T = unknown>(method: string, payload: Record<string, unknown>): Promise<T> {
     const res = await fetch(`${apiBase}/${method}`, {
@@ -77,6 +79,22 @@ export function createTelegramClient(botToken: string) {
     },
     async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
       await call("answerCallbackQuery", { callback_query_id: callbackQueryId, text });
+    },
+    /**
+     * Скачать файл по file_id (S09: голосовые): getFile даёт путь, ссылка по нему живёт около часа, поэтому
+     * качаем сразу. Сам file_id бот может использовать и позже. maxBytes — защита от неожиданно большого файла:
+     * Telegram прислал размер больше — не качаем.
+     */
+    async downloadFile(fileId: string, maxBytes: number): Promise<{ bytes: Uint8Array; size: number }> {
+      const file = await call<{ file_path?: string; file_size?: number }>("getFile", { file_id: fileId });
+      if (!file.file_path) throw new TelegramApiError("getFile", 400, "no file_path");
+      if (file.file_size !== undefined && file.file_size > maxBytes) throw new TelegramApiError("getFile", 413, "file too big");
+      const res = await fetch(`${fileBase}/${file.file_path}`);
+      // В ошибке — только HTTP-код: URL с токеном не пишем.
+      if (!res.ok) throw new TelegramApiError("downloadFile", res.status, "download failed");
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes.byteLength > maxBytes) throw new TelegramApiError("downloadFile", 413, "file too big");
+      return { bytes, size: bytes.byteLength };
     },
   };
 }

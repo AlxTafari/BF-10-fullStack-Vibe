@@ -3,26 +3,49 @@
 
 // async без await намеренно: ошибка из throw становится отклонённым Promise, как у настоящего клиента.
 // deno-lint-ignore-file require-await
-import { type LlmClient, LlmError, type LlmErrorKind, type LlmRequest, type LlmResponse } from "./types.ts";
+import {
+  type LlmClient,
+  LlmError,
+  type LlmErrorKind,
+  type LlmRequest,
+  type LlmResponse,
+  type LlmTranscribeRequest,
+  type LlmTranscription,
+} from "./types.ts";
 
 /** Шаг сценария: готовый ответ, ошибка заданного класса или функция от запроса (для проверок по ходу). */
 export type FakeLlmStep = LlmResponse | { error: LlmErrorKind } | ((request: LlmRequest) => LlmResponse);
 
+/** Шаг распознавания — своя очередь: голосовой тест задаёт расшифровку отдельно от ответов агента. */
+export type FakeTranscribeStep = LlmTranscription | { error: LlmErrorKind };
+
 export interface FakeLlm extends LlmClient {
   /** Все запросы к модели по порядку — что агент ей передал. */
   readonly requests: LlmRequest[];
-  /** Сколько шагов ещё не израсходовано: в конце теста обычно 0. */
+  /** Запросы на распознавание по порядку. */
+  readonly transcribeRequests: LlmTranscribeRequest[];
+  /** Сколько шагов ещё не израсходовано (обе очереди): в конце теста обычно 0. */
   remaining(): number;
 }
 
 /** Ответы выдаются по очереди. Кончились — ошибка теста: агент сделал больше вызовов, чем ожидалось. */
-export function createFakeLlm(steps: FakeLlmStep[], model = "fake-model"): FakeLlm {
+export function createFakeLlm(steps: FakeLlmStep[], model = "fake-model", transcriptions: FakeTranscribeStep[] = []): FakeLlm {
   const queue = [...steps];
+  const transcribeQueue = [...transcriptions];
   const requests: LlmRequest[] = [];
+  const transcribeRequests: LlmTranscribeRequest[] = [];
   return {
     model,
     requests,
-    remaining: () => queue.length,
+    transcribeRequests,
+    remaining: () => queue.length + transcribeQueue.length,
+    async transcribe(request: LlmTranscribeRequest): Promise<LlmTranscription> {
+      transcribeRequests.push(request);
+      const step = transcribeQueue.shift();
+      if (!step) throw new Error("fakeLlm: неожиданное распознавание, сценарий исчерпан");
+      if ("error" in step) throw new LlmError(step.error, `fake ${step.error}`);
+      return step;
+    },
     async generate(request: LlmRequest): Promise<LlmResponse> {
       // Копия: агент дописывает в свой массив сообщений, а тесту нужен снимок на момент вызова.
       requests.push({ ...request, messages: [...request.messages] });
@@ -48,3 +71,7 @@ export const call = (name: string, args: Record<string, unknown> = {}, id?: stri
   kind: "tool_calls",
   calls: [{ id, name, args }],
 });
+/** Расшифровка голосового с небольшим расходом — как от настоящей модели. */
+export const heard = (text: string): LlmTranscription => ({ text, unclear: false, usage: { input: 320, output: 20, thoughts: 0 } });
+/** Речь не разобрать. */
+export const unclear = (): LlmTranscription => ({ text: "", unclear: true, usage: { input: 320, output: 5, thoughts: 0 } });

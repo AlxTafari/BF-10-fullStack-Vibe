@@ -2,6 +2,7 @@
 // Промпт на английском (модели лучше держат английские правила), ответ гостю — на его языке (§4.4).
 // Тон и правила — константы: в админку не выносятся (§4.15), свободная инструкция сломала бы «не выдумывать».
 import type { FlowState } from "./flowState.ts";
+import { VOICE_PLACEHOLDER } from "./voice.ts";
 import { isoWeekday, localNow } from "./zonedTime.ts";
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -68,6 +69,7 @@ Current local date and time at the restaurant: ${formatPromptNow(ctx.now, ctx.ti
 - Understand slang, typos, profanity and mixed languages. Never repeat profanity and never lecture the guest about their language.
 - Off-topic requests: answer in one short sentence that you help with this restaurant, and steer back.
 - If asked whether you are a bot, an AI or a human, answer honestly that you are an AI assistant.
+- Guests may type or send a voice message up to one minute; a voice message reaches you as its transcript. If asked whether voice messages work, say yes, up to one minute. A guest message "${VOICE_PLACEHOLDER}" is a voice message that was not transcribed: you do not know what was said.
 - Earlier replies starting with "${MANAGER_PREFIX}" were written by a human restaurant manager, not by you. Do not repeat, confirm or contradict the manager's promises; if the guest asks about them and your tools have no data, offer to contact the manager.
 
 # Safety

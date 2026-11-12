@@ -33,6 +33,8 @@ export interface FakeTelegram extends TelegramClient {
   last(chatId: number): FakeMessage;
   /** Следующий вызов `method` (для `chatId`, если задан) бросит `error` — как Telegram при блокировке бота и т.п. */
   failNext(method: FakeMethod, error: TelegramApiError, chatId?: number): void;
+  /** Положить файл, который отдаст downloadFile (S09: голосовые). Неизвестный file_id — ошибка, как у Telegram. */
+  putFile(fileId: string, bytes: Uint8Array): void;
 }
 
 /** Ошибка в формате настоящего клиента: роутер различает их по коду и описанию (isMessageGoneError и др.). */
@@ -44,6 +46,7 @@ export function createFakeTelegram(): FakeTelegram {
   const calls: FakeCall[] = [];
   const chats = new Map<number, Map<number, FakeMessage>>();
   const failures: { method: FakeMethod; chatId?: number; error: TelegramApiError }[] = [];
+  const files = new Map<string, Uint8Array>();
   // message_id в Telegram растёт в пределах чата; одного счётчика на всех тестам достаточно.
   let nextMessageId = 1;
 
@@ -78,6 +81,9 @@ export function createFakeTelegram(): FakeTelegram {
     failNext(method, error, chatId) {
       failures.push({ method, chatId, error });
     },
+    putFile(fileId, bytes) {
+      files.set(fileId, bytes);
+    },
 
     async sendMessage(chatId, text, keyboard) {
       record({ method: "sendMessage", chatId, messageId: null, text, keyboard: keyboard ?? null });
@@ -106,6 +112,14 @@ export function createFakeTelegram(): FakeTelegram {
     },
     async sendChatAction(chatId, _action) {
       record({ method: "sendChatAction", chatId, messageId: null, text: null, keyboard: null });
+    },
+    async downloadFile(fileId, maxBytes) {
+      // text — file_id: тест видит, какой файл бот скачивал.
+      record({ method: "downloadFile", chatId: null, messageId: null, text: fileId, keyboard: null });
+      const bytes = files.get(fileId);
+      if (!bytes) throw telegramError("getFile", 400, "Bad Request: invalid file_id");
+      if (bytes.byteLength > maxBytes) throw telegramError("downloadFile", 413, "file too big");
+      return { bytes, size: bytes.byteLength };
     },
     async answerCallbackQuery(_callbackQueryId, text) {
       record({ method: "answerCallbackQuery", chatId: null, messageId: null, text: text ?? null, keyboard: null });

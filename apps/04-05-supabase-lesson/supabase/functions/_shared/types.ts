@@ -35,7 +35,30 @@ export interface AiTurnUsage {
 export type MessageMeta =
   | ({ ai: true; model: string; tools: string[] } & AiTurnUsage)
   | ({ aiFallback: "error" | "timeout" | "quota" | "limit"; model?: string } & Partial<AiTurnUsage>)
-  | { manager: true; managerId: string };
+  | { manager: true; managerId: string }
+  | { voice: VoiceMeta };
+
+/**
+ * Голосовое гостя (S09, сессия 4). Аудио не храним: fileId — ключ, по которому файл скачивается у Telegram
+ * (прослушивание в админке, распознавание по кнопке). Расход распознавания — те же поля, что у хода агента:
+ * статистика суммирует их отдельной группой. calls = 0 / нет полей — модель не вызывалась.
+ */
+export type VoiceMeta = {
+  fileId: string;
+  duration: number;
+  mimeType?: string;
+  fileSize?: number;
+  /** Кто распознал: auto — бот для агента, manager — кнопка в админке. Нет — текст не получен. */
+  transcribedBy?: "auto" | "manager";
+  /**
+   * Распознать не вышло: unclear — речи не разобрать (вызов оплачен), download — файл не скачан, остальное —
+   * класс сбоя модели (как у aiFallback). При успехе поля нет.
+   */
+  transcribeError?: VoiceTranscribeError;
+  model?: string;
+} & Partial<AiTurnUsage>;
+
+export type VoiceTranscribeError = "unclear" | "download" | "too_big" | "quota" | "timeout" | "unavailable" | "bad_response";
 
 export interface RestaurantRow {
   id: string;

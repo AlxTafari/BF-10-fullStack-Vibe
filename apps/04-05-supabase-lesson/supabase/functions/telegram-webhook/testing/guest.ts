@@ -14,6 +14,8 @@ export interface TestGuest {
   readonly id: number;
   /** Текст от гостя. Возвращает update_id — чтобы проверить повторную доставку того же апдейта. */
   text(text: string): Promise<number>;
+  /** Голосовое (S09): файл под этим fileId тест кладёт в фейковый Telegram сам (tg.putFile), если он нужен. */
+  voice(fileId: string, duration: number, fileSize?: number): Promise<number>;
   /** Нажатие кнопки с данным callback_data под сообщением messageId (по умолчанию — под последним). */
   tap(callbackData: string, messageId?: number): Promise<number>;
   /** Нажатие первой кнопки на экране гостя, чья callback_data подходит под условие. Нет такой — ошибка. */
@@ -87,6 +89,16 @@ export function createTestGuest(
       deliver((updateId) => ({
         update_id: updateId,
         message: { message_id: updateId, from, chat, text },
+      })),
+    voice: (fileId, duration, fileSize) =>
+      deliver((updateId) => ({
+        update_id: updateId,
+        message: {
+          message_id: updateId,
+          from,
+          chat,
+          voice: { file_id: fileId, file_unique_id: `u${fileId}`, duration, mime_type: "audio/ogg", file_size: fileSize },
+        },
       })),
     tap,
     async tapWhere(match) {

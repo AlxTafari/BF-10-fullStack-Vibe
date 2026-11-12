@@ -36,6 +36,7 @@ import {
 import { handleBookingAction, handleMyRequests } from "./handlers/myRequests.ts";
 import { handleMainMenu, handleRestaurantInfo, handleStart } from "./handlers/mainMenu.ts";
 import { handleCategory, handleDish, handleMenuCategories, handleSearch } from "./handlers/menu.ts";
+import { handleVoice } from "./handlers/voice.ts";
 import { logIncoming, sendTemporary } from "./logging.ts";
 
 // /start и /start@bot_name (так Telegram шлёт команду в группах).
@@ -123,6 +124,13 @@ async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void
   // В лимит идёт только свободный текст вне сценария (агент, поиск): команды и шаги брони — легитимный быстрый ввод.
   const isCommand = START_COMMAND.test(text) || CANCEL_COMMAND.test(text);
   if (!(await passesRateLimit(deps, ctx, countsTowardRateLimit({ isCommand, isCallback: false, hasLiveFlow: !!flowState })))) return;
+
+  // Голосовое (S09, сессия 4) — свой путь: агенту, менеджеру или отказ решает handlers/voice.ts. В лимит идёт
+  // как свободный текст (проверка выше): у голосового text нет, isCommand = false.
+  if (message.voice) {
+    await handleVoice(ctx, message.voice, !!flowState);
+    return;
+  }
   if (isTooLong(text)) {
     // Текст не пишем в БД и не обрабатываем; в ответе его не цитируем.
     await deps.tg.sendMessage(ctx.chatId, TEXT_TOO_LONG);
@@ -133,7 +141,7 @@ async function handleMessage(deps: Deps, message: TelegramMessage): Promise<void
   // начал кнопкой во время режима, ведёт бот (при подключении менеджера прежний сценарий сбрасывается в RPC).
   const toManager = !isCommand && !flowState && isHandoffActive(ctx.conversation.handoff_until, new Date());
   if (toManager) {
-    // Стикер или фото менеджер в админке не увидит (журнал хранит только текст) — говорим об этом гостю.
+    // Стикер или фото менеджер в админке не увидит (журнал хранит текст и голосовые) — говорим об этом гостю.
     if (!text) {
       await deps.tg.sendMessage(ctx.chatId, MANAGER_TEXT_ONLY);
       return;

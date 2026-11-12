@@ -80,6 +80,9 @@ agentTest("ответ по данным tool, результат tool уходи
   const names = (group: unknown) => (group as { name: string }[]).map((d) => d.name);
   assert(names(seen.free).includes("Дорада на гриле"));
   assert(names(seen.contains).includes("Дзадзики"));
+  // allergens = null — не «можно», а отдельная группа «не указано».
+  assert(names(seen.notSpecified).includes("Скордалия"));
+  assert(!names(seen.free).includes("Скордалия"), "блюдо без аллергенов попало в «можно»");
   // Стоп-лист и неопубликованное не попадают ни в одну группу.
   const all = [...names(seen.free), ...names(seen.contains), ...names(seen.notSpecified)];
   assert(!all.includes(STOP_LIST_DISH), "блюдо из стоп-листа ушло модели");

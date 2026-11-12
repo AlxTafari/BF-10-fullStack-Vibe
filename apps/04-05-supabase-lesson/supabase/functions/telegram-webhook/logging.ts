@@ -6,8 +6,9 @@ import type { MessageKind, MessageMeta } from "../_shared/types.ts";
 import type { InlineKeyboard } from "../_shared/telegram/types.ts";
 import type { HandlerContext } from "./context.ts";
 
-export function logIncoming(ctx: HandlerContext, text: string, kind: MessageKind = "text"): Promise<void> {
-  return recordMessage(ctx.client, ctx.conversation.id, "in", text, kind);
+/** Входящее сообщение гостя в журнал. meta — у голосового (S09: fileId, длительность, расшифровка), у текста нет. */
+export function logIncoming(ctx: HandlerContext, text: string, kind: MessageKind = "text", meta?: MessageMeta): Promise<void> {
+  return recordMessage(ctx.client, ctx.conversation.id, "in", text, kind, meta);
 }
 
 /**

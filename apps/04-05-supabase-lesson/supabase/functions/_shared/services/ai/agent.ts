@@ -63,6 +63,27 @@ export interface AgentDeps {
   now?: Date;
 }
 
+/** Ответы агента в диалоге за сегодняшний день ресторана (его часовой пояс) — счётчик суточного лимита. */
+function countTodayAiReplies(client: SupabaseClient, conversationId: string, timeZone: string, now: Date): Promise<number> {
+  const day = localDayBoundsUtc(now, timeZone);
+  return countAiReplies(client, conversationId, day.from, day.to);
+}
+
+/**
+ * Суточный лимит ходов исчерпан? Нужен до распознавания голосового (S09, сессия 4): исчерпан — агенту нечем
+ * ответить, и распознавание было бы оплачено зря. Ресторана нет — false: агент сам ответит запасным ответом.
+ */
+export async function isAiLimitReached(
+  client: SupabaseClient,
+  conversation: ConversationRow,
+  settings: AiSettings,
+  now = new Date(),
+): Promise<boolean> {
+  const restaurant = await getRestaurantById(client, conversation.restaurant_id);
+  if (!restaurant) return false;
+  return await countTodayAiReplies(client, conversation.id, restaurant.timezone, now) >= settings.dailyTurnLimit;
+}
+
 /**
  * Ход агента по последней реплике гостя. Реплика к этому моменту уже записана в messages (её пишет роутер),
  * поэтому она приходит последней строкой окна истории, отдельно её не передаём.
@@ -93,9 +114,9 @@ export async function runAgentTurn(
     if (!restaurant) return fallback("error");
 
     // Лимит — до вызова модели: исчерпан — ни одного токена не тратим.
-    const day = localDayBoundsUtc(now, restaurant.timezone);
-    const used = await countAiReplies(deps.client, conversation.id, day.from, day.to);
-    if (used >= settings.dailyTurnLimit) return fallback("limit");
+    if (await countTodayAiReplies(deps.client, conversation.id, restaurant.timezone, now) >= settings.dailyTurnLimit) {
+      return fallback("limit");
+    }
 
     const rows = await listRecentMessages(deps.client, conversation.id, HISTORY_KINDS, settings.historyWindow);
     const history = buildHistory(rows);

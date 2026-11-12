@@ -92,8 +92,31 @@ export class LlmError extends Error {
   }
 }
 
+/** Распознать голосовое (S09, сессия 4): аудио inline, без tools и истории. */
+export interface LlmTranscribeRequest {
+  /** Инструкция распознавателю — из domain (TRANSCRIBE_INSTRUCTION), провайдер её не сочиняет. */
+  system: string;
+  audio: Uint8Array;
+  /** audio/ogg — голосовые Telegram (Opus). */
+  mimeType: string;
+  timeoutMs: number;
+}
+
+/**
+ * Ответ распознавателя. Провайдер отдаёт его структурой (у Gemini — JSON по схеме), а не свободным текстом:
+ * иначе «не разобрал» модели пришлось бы писать словами, и это ушло бы агенту как реплика гостя.
+ * unclear = true — речи не разобрать, text пустой.
+ */
+export interface LlmTranscription {
+  text: string;
+  unclear: boolean;
+  usage?: LlmUsage;
+}
+
 export interface LlmClient {
   /** Имя модели — пишется в messages.meta, чтобы в админке было видно, кто ответил. */
   readonly model: string;
   generate(request: LlmRequest): Promise<LlmResponse>;
+  /** Ошибки — те же LlmError, что у generate. */
+  transcribe(request: LlmTranscribeRequest): Promise<LlmTranscription>;
 }

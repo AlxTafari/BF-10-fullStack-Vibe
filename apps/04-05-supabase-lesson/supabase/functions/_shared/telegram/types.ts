@@ -11,6 +11,18 @@ export interface TelegramMessage {
   // type = 'private' | 'group' | 'supergroup' | 'channel'; удалять/править сообщения бот умеет только в личных чатах.
   chat: { id: number; type?: string };
   text?: string;
+  voice?: TelegramVoice;
+}
+
+/** Голосовое (S09). file_id — ключ для getFile: по нему бот скачивает файл и позже (кнопка в админке). */
+export interface TelegramVoice {
+  file_id: string;
+  file_unique_id: string;
+  /** Длительность в секундах — по ней проверяем предел до скачивания. */
+  duration: number;
+  /** Обычно audio/ogg (Opus); Telegram может не прислать. */
+  mime_type?: string;
+  file_size?: number;
 }
 
 export interface TelegramCallbackQuery {
