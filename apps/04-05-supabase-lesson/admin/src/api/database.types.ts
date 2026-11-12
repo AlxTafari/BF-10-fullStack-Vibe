@@ -129,6 +129,7 @@ export type Database = {
           last_message_at: string | null
           last_message_direction: string | null
           last_message_preview: string | null
+          last_nav: Json | null
           manager_last_read_at: string | null
           restaurant_id: string
           state: Json
@@ -146,6 +147,7 @@ export type Database = {
           last_message_at?: string | null
           last_message_direction?: string | null
           last_message_preview?: string | null
+          last_nav?: Json | null
           manager_last_read_at?: string | null
           restaurant_id: string
           state?: Json
@@ -163,6 +165,7 @@ export type Database = {
           last_message_at?: string | null
           last_message_direction?: string | null
           last_message_preview?: string | null
+          last_nav?: Json | null
           manager_last_read_at?: string | null
           restaurant_id?: string
           state?: Json
@@ -447,6 +450,30 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limits: {
+        Row: {
+          bucket: string
+          external_user_id: number
+          hits: number
+          warned: boolean
+          window_start: string
+        }
+        Insert: {
+          bucket?: string
+          external_user_id: number
+          hits: number
+          warned?: boolean
+          window_start: string
+        }
+        Update: {
+          bucket?: string
+          external_user_id?: number
+          hits?: number
+          warned?: boolean
+          window_start?: string
+        }
+        Relationships: []
+      }
       restaurant_ai_settings: {
         Row: {
           ai_enabled: boolean
@@ -565,8 +592,8 @@ export type Database = {
           fallback_quota: number
           fallback_timeout: number
           input_tokens: number
-          ms_total: number
           model: string
+          ms_total: number
           output_tokens: number
           thought_tokens: number
           turns: number
@@ -580,8 +607,32 @@ export type Database = {
           was_active: boolean
         }[]
       }
+      check_rate_limit: {
+        Args: {
+          p_bucket?: string
+          p_external_user_id: number
+          p_max: number
+          p_window_seconds: number
+        }
+        Returns: string
+      }
       count_unread_conversations: { Args: never; Returns: number }
+      end_manager_handoff: {
+        Args: { p_conversation_id: string }
+        Returns: {
+          chat_id: number
+          restaurant_id: string
+          was_active: boolean
+        }[]
+      }
       eu_allergen_codes: { Args: never; Returns: string[] }
+      extend_manager_handoff: {
+        Args: { p_conversation_id: string }
+        Returns: {
+          chat_id: number
+          handoff_until: string
+        }[]
+      }
       get_messages_page: {
         Args: {
           p_before_created_at: string
@@ -606,21 +657,6 @@ export type Database = {
         }
       }
       is_manager_of: { Args: { p_restaurant_id: string }; Returns: boolean }
-      end_manager_handoff: {
-        Args: { p_conversation_id: string }
-        Returns: {
-          chat_id: number
-          restaurant_id: string
-          was_active: boolean
-        }[]
-      }
-      extend_manager_handoff: {
-        Args: { p_conversation_id: string }
-        Returns: {
-          chat_id: number
-          handoff_until: string
-        }[]
-      }
       list_conversations_page: {
         Args: { p_before_at: string; p_before_id: string; p_limit: number }
         Returns: {
@@ -641,6 +677,17 @@ export type Database = {
       mark_conversation_read: {
         Args: { p_conversation_id: string; p_up_to: string }
         Returns: undefined
+      }
+      purge_old_data: {
+        Args: never
+        Returns: {
+          cleared_previews: number
+          purged_conversations: number
+          purged_noise: number
+          purged_rate_limits: number
+          purged_text: number
+          purged_updates: number
+        }[]
       }
       resolve_conversation_flag: {
         Args: { p_conversation_id: string }
@@ -672,6 +719,13 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      set_faq_answer: {
+        Args: { p_conversation_id: string; p_expected: number; p_new: number }
+        Returns: {
+          previous_id: number
+          swapped: boolean
+        }[]
+      }
       set_guest_request_status: {
         Args: { p_from: string; p_id: string; p_to: string }
         Returns: {
@@ -693,6 +747,15 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      set_last_nav: {
+        Args: {
+          p_conversation_id: string
+          p_expected: number
+          p_message_id: number
+          p_screen: string
+        }
+        Returns: boolean
       }
     }
     Enums: {
