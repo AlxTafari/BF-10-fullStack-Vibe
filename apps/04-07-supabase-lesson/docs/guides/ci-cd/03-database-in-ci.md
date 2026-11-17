@@ -71,7 +71,7 @@ run: supabase start -x studio,mailpit,storage-api,imgproxy,postgres-meta,logflar
 
 ## 3. `.env` из `supabase status`
 
-Тесты бота и админки берут адрес и ключи из `apps/04-05-supabase-lesson/.env`: бот через
+Тесты бота и админки берут адрес и ключи из `apps/04-07-supabase-lesson/.env`: бот через
 `deno test --env-file=../../.env`, админка через `loadEnv` в `admin/vite.config.ts`. Ради CI тесты не
 менялись: workflow просто создаёт этот файл.
 

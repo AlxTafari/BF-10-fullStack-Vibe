@@ -113,7 +113,7 @@ admin/src/
 
 #### Каркас
 
-- **Менеджер пакетов и запуск:** `admin/` — пакет pnpm-воркспейса (`apps/*` уже в `pnpm-workspace.yaml`; проект `04-05-supabase-lesson` сам пакет, `admin/` вложен в него, поэтому воркспейс нужно расширить на `apps/*/admin` — см. вопрос 2). Скрипты: `dev`, `build`, `typecheck`, `lint`, `test`, `types:gen`.
+- **Менеджер пакетов и запуск:** `admin/` — пакет pnpm-воркспейса (`apps/*` уже в `pnpm-workspace.yaml`; проект `04-07-supabase-lesson` сам пакет, `admin/` вложен в него, поэтому воркспейс нужно расширить на `apps/*/admin` — см. вопрос 2). Скрипты: `dev`, `build`, `typecheck`, `lint`, `test`, `types:gen`.
 - **Env:** `admin/.env.local` (в `.gitignore`): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. `.env.example` в git. Анон-ключ публичный по природе — защита это RLS.
 - **Типы БД:** `pnpm types:gen` → `supabase gen types typescript --linked > admin/src/api/database.types.ts`; файл коммитится. Любая миграция, меняющая схему, требует перегенерации — в чеклист DoD.
 - **TanStack Router:** файловые маршруты через плагин Vite; корневой контекст маршрутизатора получает `store`, чтобы `beforeLoad` мог проверять сессию. Маршруты:
@@ -217,7 +217,7 @@ admin/src/
 Все вопросы закрыты 2026-10-13 (ответы — первой записью `QA.md` сессии старта).
 
 1. ~~Как заводить менеджера?~~ **Решено:** руками — Dashboard (Add user) + SQL `insert into restaurant_managers`. Шаги — в README проекта; скрипта нет.
-2. ~~Где живёт `admin/`?~~ **Решено:** `apps/04-05-supabase-lesson/admin/` отдельным пакетом. В `pnpm-workspace.yaml` добавляется `apps/*/admin`; в корневом `package.json` — скрипты `dev:admin`, `build:admin`, `typecheck:admin`, `test:admin` и т. п. по образцу остальных проектов.
+2. ~~Где живёт `admin/`?~~ **Решено:** `apps/04-07-supabase-lesson/admin/` отдельным пакетом. В `pnpm-workspace.yaml` добавляется `apps/*/admin`; в корневом `package.json` — скрипты `dev:admin`, `build:admin`, `typecheck:admin`, `test:admin` и т. п. по образцу остальных проектов.
 3. ~~Валюта блюда.~~ **Решено:** колонка `restaurants.currency`, `menu_items.currency` удаляется (вариант с двумя шагами миграции — §2.А). Цена со стороны блюда без валюты; форма блюда валюту не содержит.
 4. ~~Порядок FAQ и категорий.~~ **Решено:** drag-and-drop (`@dnd-kit`), с клавиатурным сенсором и перезаписью `sort_order` целиком (§2.В). Отступление от рекомендации (стрелки) принято осознанно; доступность с клавиатуры — часть приёмки.
 5. ~~Как тестировать RLS?~~ **Решено:** интеграционные тесты Vitest на dev-БД; два пользователя Auth и два ресторана создаются service role'ом в `beforeAll` и удаляются в `afterAll`; без `SUPABASE_SERVICE_ROLE_KEY` пропускаются (по образцу теста бота). Ключ — только в локальном `.env` для тестов, не в `VITE_*` и не в `admin/.env.local`, который читает браузерный бандл.

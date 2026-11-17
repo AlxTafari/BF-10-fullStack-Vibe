@@ -97,7 +97,7 @@ expand → contract.
 Сверка после деплоя (шаг Д2 первого запуска показал 13/13):
 
 ```bash
-pnpm --filter 04-05-lesson exec supabase migration list --linked
+pnpm --filter 04-07-lesson exec supabase migration list --linked
 ```
 
 ## 5. `concurrency`: два деплоя не идут одновременно

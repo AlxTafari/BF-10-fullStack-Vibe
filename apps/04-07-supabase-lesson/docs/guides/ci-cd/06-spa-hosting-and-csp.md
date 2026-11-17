@@ -39,7 +39,7 @@ Vercel) — это смена двух шагов в `deploy-admin` и одно�
 ```yaml
 - uses: actions/upload-pages-artifact@v5     # упаковать dist в артефакт github-pages
   with:
-    path: apps/04-05-supabase-lesson/admin/dist
+    path: apps/04-07-supabase-lesson/admin/dist
 - id: pages
   uses: actions/deploy-pages@v5              # опубликовать артефакт, вернуть адрес в outputs.page_url
 ```

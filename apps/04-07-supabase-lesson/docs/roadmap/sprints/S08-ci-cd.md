@@ -17,7 +17,7 @@ CSP-заголовком. Ручной `supabase db push` / `functions deploy` �
 - **Входит:**
   - Workflow `.github/workflows/guest-bot.yml`: проверки (§2.Б.1), интеграционные тесты на Supabase в Docker
     внутри раннера (§2.Б.2), деплой в prod (§2.Б.3). Срабатывает только на изменения
-    `apps/04-05-supabase-lesson/**` и самого workflow.
+    `apps/04-07-supabase-lesson/**` и самого workflow.
   - Prod-окружение: новый проект Supabase, второй бот у BotFather, проект Cloudflare Pages (§2.А).
     Чек-лист первичной настройки — `docs/guides/ci-cd/prod-checklist.md`. Его же проходим вживую.
   - Сборка админки под prod: `VITE_*` из GitHub Variables, файл `admin/public/_headers` с CSP и заголовками
@@ -87,7 +87,7 @@ on:
   push:         branches: [main]   ─ прямой push и merge PR (merge для GitHub — тоже push в main)
   pull_request: branches: [main]   ─ открытие PR и каждый новый коммит в его ветку
   workflow_dispatch                ─ ручной запуск из вкладки Actions
-  (у push и pull_request — paths: apps/04-05-supabase-lesson/**, .github/workflows/guest-bot.yml)
+  (у push и pull_request — paths: apps/04-07-supabase-lesson/**, .github/workflows/guest-bot.yml)
 
 checks ──┐
          ├──► deploy   (только push в main или ручной запуск; concurrency: guest-bot-prod)
@@ -138,7 +138,7 @@ Realtime, PostgREST и Edge Runtime, применяет все миграции 
 1. checkout, pnpm, node, deno, `supabase/setup-cli` (версия CLI = версия из `package.json`, сверить).
 2. `supabase start -x studio,imgproxy,inbucket,…` — лишние контейнеры отключить, чтобы ускорить старт (точный
    список — сессия 2).
-3. Сгенерировать `apps/04-05-supabase-lesson/.env` из `supabase status -o env`: `SUPABASE_URL`,
+3. Сгенерировать `apps/04-07-supabase-lesson/.env` из `supabase status -o env`: `SUPABASE_URL`,
    `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`. Имена переменных в выводе CLI сверить: новые версии
    печатают ещё и publishable/secret-ключи. Файл подхватывают оба потребителя: `deno test --env-file=../../.env`
    и `admin/vite.config.ts` (`loadEnv` из корня приложения). **Боевой код и конфиги тестов ради CI не

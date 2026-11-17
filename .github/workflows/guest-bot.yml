@@ -1,6 +1,6 @@
-# CI/CD гостевого бота ресторана (apps/04-05-supabase-lesson): бот на Edge Functions + админка.
-# Спека — apps/04-05-supabase-lesson/docs/roadmap/sprints/S08-ci-cd.md, разбор файла построчно —
-# apps/04-05-supabase-lesson/docs/guides/ci-cd/02-github-actions-anatomy.md.
+# CI/CD гостевого бота ресторана (apps/04-07-supabase-lesson): бот на Edge Functions + админка.
+# Спека — apps/04-07-supabase-lesson/docs/roadmap/sprints/S08-ci-cd.md, разбор файла построчно —
+# apps/04-07-supabase-lesson/docs/guides/ci-cd/02-github-actions-anatomy.md.
 #
 # Четыре job'а: быстрые проверки (checks), интеграционные тесты на Supabase в раннере (integration),
 # выкладка миграций и функций в Supabase (deploy) и админки на GitHub Pages (deploy-admin). Выкладка — только
@@ -17,13 +17,13 @@ on:
   push:
     branches: [main]
     paths:
-      - "apps/04-05-supabase-lesson/**"
+      - "apps/04-07-supabase-lesson/**"
       - ".github/workflows/guest-bot.yml"
   # PR в main: открытие и каждый новый коммит в его ветку. Только проверки, деплоя на PR не будет.
   pull_request:
     branches: [main]
     paths:
-      - "apps/04-05-supabase-lesson/**"
+      - "apps/04-07-supabase-lesson/**"
       - ".github/workflows/guest-bot.yml"
   # Ручной запуск из вкладки Actions.
   workflow_dispatch:
@@ -46,7 +46,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: apps/04-05-supabase-lesson
+        working-directory: apps/04-07-supabase-lesson
 
     steps:
       - uses: actions/checkout@v7
@@ -79,33 +79,33 @@ jobs:
 
       # --frozen у deno — то же, что --frozen-lockfile у pnpm, для supabase/functions/deno.lock.
       - name: "Bot: deno check"
-        working-directory: apps/04-05-supabase-lesson/supabase/functions
+        working-directory: apps/04-07-supabase-lesson/supabase/functions
         run: deno check --frozen .
 
       - name: "Bot: deno lint"
-        working-directory: apps/04-05-supabase-lesson/supabase/functions
+        working-directory: apps/04-07-supabase-lesson/supabase/functions
         run: deno lint
 
       # Без SUPABASE_URL интеграционные тесты пропускаются сами — здесь идёт только домен.
       - name: "Bot: unit tests"
-        working-directory: apps/04-05-supabase-lesson/supabase/functions
+        working-directory: apps/04-07-supabase-lesson/supabase/functions
         run: deno test --allow-env --frozen
 
       # --- Админка ---
 
       - name: "Admin: layers (ADR-008)"
-        run: pnpm --filter 04-05-admin check:layers
+        run: pnpm --filter 04-07-admin check:layers
 
       - name: "Admin: typecheck"
-        run: pnpm --filter 04-05-admin typecheck
+        run: pnpm --filter 04-07-admin typecheck
 
       - name: "Admin: lint"
-        run: pnpm --filter 04-05-admin lint
+        run: pnpm --filter 04-07-admin lint
 
       # Сборка без VITE_*: проверка env в supabaseClient срабатывает только в браузере, не при сборке.
       # Тесты админки (юнит + интеграционные) — в job integration, им нужна БД.
       - name: "Admin: build"
-        run: pnpm --filter 04-05-admin build
+        run: pnpm --filter 04-07-admin build
 
   integration:
     name: Integration (Supabase in runner, bot + admin tests)
@@ -114,7 +114,7 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: apps/04-05-supabase-lesson
+        working-directory: apps/04-07-supabase-lesson
 
     steps:
       - uses: actions/checkout@v7
@@ -176,12 +176,12 @@ jobs:
 
       # Все тесты бота: домен + интеграционные на БД раннера, включая сценарии S07.
       - name: "Bot: all tests"
-        working-directory: apps/04-05-supabase-lesson/supabase/functions
+        working-directory: apps/04-07-supabase-lesson/supabase/functions
         run: deno test --allow-env --allow-net --allow-read --env-file=../../.env --frozen
 
       # Юнит src/ + интеграционные tests/ (RLS, RPC статусов, Realtime, чат).
       - name: "Admin: all tests"
-        run: pnpm --filter 04-05-admin test
+        run: pnpm --filter 04-07-admin test
 
       # Без этого упавший тест разбирается вслепую: виртуалка исчезнет вместе с контейнерами.
       - name: Supabase logs on failure
@@ -210,7 +210,7 @@ jobs:
       cancel-in-progress: false
     defaults:
       run:
-        working-directory: apps/04-05-supabase-lesson
+        working-directory: apps/04-07-supabase-lesson
     # Не секретное значение prod — из GitHub Variables. Секреты подключаются только в тех шагах, где нужны.
     env:
       SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
@@ -288,7 +288,7 @@ jobs:
       cancel-in-progress: false
     defaults:
       run:
-        working-directory: apps/04-05-supabase-lesson
+        working-directory: apps/04-07-supabase-lesson
     env:
       SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
       # VITE_* уходят в бандл браузера — это публичные значения, поэтому они в Variables, а не в Secrets.
@@ -326,7 +326,7 @@ jobs:
       # Страница откроется (роутер прочитает путь из адреса), но статус ответа останется 404 — ограничение Pages.
       - name: "Admin: build for prod"
         run: |
-          pnpm --filter 04-05-admin build
+          pnpm --filter 04-07-admin build
           grep -q "connect-src &#39;self&#39; https://${SUPABASE_PROJECT_REF}.supabase.co" admin/dist/index.html \
             || { echo "::error::admin/dist/index.html без CSP под prod-проект"; exit 1; }
           cp admin/dist/index.html admin/dist/404.html
@@ -334,7 +334,7 @@ jobs:
       # Упаковывает dist в артефакт github-pages — его и публикует следующий шаг.
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: apps/04-05-supabase-lesson/admin/dist
+          path: apps/04-07-supabase-lesson/admin/dist
 
       - name: "Admin: deploy to GitHub Pages"
         id: pages

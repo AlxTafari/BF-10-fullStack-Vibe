@@ -8,7 +8,7 @@
 ## 1. Где живёт workflow и кто его читает
 
 GitHub ищет workflow **только** в `.github/workflows/` в корне репозитория. Поэтому файл лежит не в
-`apps/04-05-supabase-lesson/`, а в корне монорепо, рядом с `ci.yml` конвертера валют.
+`apps/04-07-supabase-lesson/`, а в корне монорепо, рядом с `ci.yml` конвертера валют.
 
 Каждый файл там — отдельный независимый workflow. Они не знают друг о друге и запускаются по своим `on`.
 
@@ -42,7 +42,7 @@ Push в ветку без PR не запускает ничего: ни `push` (
 
 ```yaml
 paths:
-  - "apps/04-05-supabase-lesson/**"
+  - "apps/04-07-supabase-lesson/**"
   - ".github/workflows/guest-bot.yml"
 ```
 
@@ -91,7 +91,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: apps/04-05-supabase-lesson
+        working-directory: apps/04-07-supabase-lesson
     steps: [...]
 ```
 
@@ -117,7 +117,7 @@ jobs:
     cache: pnpm
 
 - name: "Bot: deno lint"           # своя команда
-  working-directory: apps/04-05-supabase-lesson/supabase/functions
+  working-directory: apps/04-07-supabase-lesson/supabase/functions
   run: deno lint
 ```
 

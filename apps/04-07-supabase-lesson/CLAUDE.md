@@ -1,4 +1,4 @@
-# Гостевой бот ресторана (04-05-supabase-lesson)
+# Гостевой бот ресторана (04-07-supabase-lesson)
 
 Стек: как в `../03-supabase-lesson` (Supabase Edge Functions на Deno, Telegram, TypeScript, слои domain / repositories / telegram / handlers). Админка: Vite + React + TS, shadcn/ui, TanStack Router (не Next.js), Redux Toolkit + RTK Query, Supabase Realtime (WebSocket), курсорная пагинация чата. CI/CD — предпоследний шаг роадмапа (S08).
 
