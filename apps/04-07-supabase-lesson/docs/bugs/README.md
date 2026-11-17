@@ -30,6 +30,10 @@
 |---|---|---|---|
 | [BUG-001](backend/BUG-001-antidubli-nedorabotany.md) | medium | backend | Повторные сообщения бота удаляются не во всех случаях (анти-дубли S06d); сценарий воспроизведения не записан |
 | [BUG-003](backend/BUG-003-nedostupen-na-shage-gostej.md) | low | backend | «Этот вариант уже недоступен» на шаге гостей: повторное нажатие кнопки предыдущего шага выглядит как «слот занят» (гипотеза) |
+| [BUG-004](backend/BUG-004-private-chat-overwritten.md) | high | backend | Групповой апдейт перенаправляет личный диалог гостя в группу |
+| [BUG-005](backend/BUG-005-late-ai-restores-flow.md) | high | backend | Запоздавший AI-ход восстанавливает отменённый сценарий |
+| [BUG-006](backend/BUG-006-partial-booking-cancel.md) | medium | backend | Отмена исходной брони и её изменения не атомарна |
+| [BUG-007](tooling/BUG-007-ci-root-dependencies.md) | medium | tooling | CI пропускает изменения общих зависимостей приложения |
 
 ## Закрытые
 
