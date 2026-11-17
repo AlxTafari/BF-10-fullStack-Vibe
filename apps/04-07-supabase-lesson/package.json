@@ -16,7 +16,8 @@
     "db:check:retention": "supabase db query --linked -f supabase/dev-retention-check.sql",
     "link": "supabase link",
     "check:layers": "bash scripts/check-layers.sh",
-    "eval:ai": "deno run --allow-env --allow-net --allow-read --env-file=.env --config supabase/functions/deno.json supabase/scripts/eval-ai-phrases.ts"
+    "eval:ai": "deno run --allow-env --allow-net --allow-read --env-file=.env --config supabase/functions/deno.json supabase/scripts/eval-ai-phrases.ts",
+    "eval:rag": "deno run --allow-env --allow-net --allow-read --env-file=.env supabase/scripts/rag-eval/eval-rag-search.ts"
   },
   "type": "commonjs",
   "devDependencies": {
