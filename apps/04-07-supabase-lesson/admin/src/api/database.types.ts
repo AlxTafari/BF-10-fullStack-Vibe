@@ -278,6 +278,156 @@ export type Database = {
           },
         ]
       }
+      knowledge_chunks: {
+        Row: {
+          chunk_index: number
+          content: string
+          created_at: string
+          document_id: string | null
+          embedding: string
+          id: string
+          menu_item_id: string | null
+          restaurant_id: string
+        }
+        Insert: {
+          chunk_index: number
+          content: string
+          created_at?: string
+          document_id?: string | null
+          embedding: string
+          id?: string
+          menu_item_id?: string | null
+          restaurant_id: string
+        }
+        Update: {
+          chunk_index?: number
+          content?: string
+          created_at?: string
+          document_id?: string | null
+          embedding?: string
+          id?: string
+          menu_item_id?: string | null
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_chunks_document_id_restaurant_id_fkey"
+            columns: ["document_id", "restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_documents"
+            referencedColumns: ["id", "restaurant_id"]
+          },
+          {
+            foreignKeyName: "knowledge_chunks_menu_item_id_restaurant_id_fkey"
+            columns: ["menu_item_id", "restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id", "restaurant_id"]
+          },
+          {
+            foreignKeyName: "knowledge_chunks_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      knowledge_document_dishes: {
+        Row: {
+          document_id: string
+          menu_item_id: string
+          restaurant_id: string
+          sort_order: number
+        }
+        Insert: {
+          document_id: string
+          menu_item_id: string
+          restaurant_id: string
+          sort_order?: number
+        }
+        Update: {
+          document_id?: string
+          menu_item_id?: string
+          restaurant_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_document_dishes_document_id_restaurant_id_fkey"
+            columns: ["document_id", "restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_documents"
+            referencedColumns: ["id", "restaurant_id"]
+          },
+          {
+            foreignKeyName: "knowledge_document_dishes_menu_item_id_restaurant_id_fkey"
+            columns: ["menu_item_id", "restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id", "restaurant_id"]
+          },
+        ]
+      }
+      knowledge_documents: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          index_attempt: string | null
+          index_error: string | null
+          index_revision: number
+          index_status: string
+          indexed_at: string | null
+          indexed_revision: number | null
+          is_published: boolean
+          restaurant_id: string
+          title: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          index_attempt?: string | null
+          index_error?: string | null
+          index_revision?: number
+          index_status?: string
+          indexed_at?: string | null
+          indexed_revision?: number | null
+          is_published?: boolean
+          restaurant_id: string
+          title: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          index_attempt?: string | null
+          index_error?: string | null
+          index_revision?: number
+          index_status?: string
+          indexed_at?: string | null
+          indexed_revision?: number | null
+          is_published?: boolean
+          restaurant_id?: string
+          title?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_documents_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       menu_categories: {
         Row: {
           created_at: string
@@ -320,6 +470,12 @@ export type Database = {
           external_id: string | null
           fat_per_portion: number | null
           id: string
+          index_attempt: string | null
+          index_error: string | null
+          index_revision: number
+          index_status: string
+          indexed_at: string | null
+          indexed_revision: number | null
           ingredients: string | null
           is_available: boolean
           is_published: boolean
@@ -343,6 +499,12 @@ export type Database = {
           external_id?: string | null
           fat_per_portion?: number | null
           id?: string
+          index_attempt?: string | null
+          index_error?: string | null
+          index_revision?: number
+          index_status?: string
+          indexed_at?: string | null
+          indexed_revision?: number | null
           ingredients?: string | null
           is_available?: boolean
           is_published?: boolean
@@ -366,6 +528,12 @@ export type Database = {
           external_id?: string | null
           fat_per_portion?: number | null
           id?: string
+          index_attempt?: string | null
+          index_error?: string | null
+          index_revision?: number
+          index_status?: string
+          indexed_at?: string | null
+          indexed_revision?: number | null
           ingredients?: string | null
           is_available?: boolean
           is_published?: boolean
@@ -695,6 +863,17 @@ export type Database = {
       resolve_conversation_flag: {
         Args: { p_conversation_id: string }
         Returns: undefined
+      }
+      save_knowledge_document: {
+        Args: {
+          p_body: string
+          p_dish_ids: string[]
+          p_id: string
+          p_is_published: boolean
+          p_title: string
+          p_type: string
+        }
+        Returns: string
       }
       set_booking_status: {
         Args: { p_from: string; p_id: string; p_to: string }
