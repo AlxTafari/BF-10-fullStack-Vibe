@@ -31,6 +31,8 @@ const CHAT_TABLES = ["conversations", "messages"] as const;
 const REQUEST_TABLES = ["booking_requests", "guest_requests"] as const;
 /** Настройки AI (S09): менеджер читает и правит свою строку, создаёт и удаляет её только БД. */
 const SETTINGS_TABLES = ["restaurant_ai_settings"] as const;
+/** База знаний (S10): документы и блюда подборок — менеджер через политики; чанки закрыты, их пишет service role. */
+const KNOWLEDGE_TABLES = ["knowledge_documents", "knowledge_document_dishes", "knowledge_chunks"] as const;
 const ALL_TABLES = [
   ...CATALOG_TABLES,
   "restaurant_managers",
@@ -38,6 +40,7 @@ const ALL_TABLES = [
   ...CHAT_TABLES,
   ...REQUEST_TABLES,
   ...SETTINGS_TABLES,
+  ...KNOWLEDGE_TABLES,
 ];
 
 const runId = Math.random().toString(36).slice(2, 8);
@@ -48,7 +51,12 @@ interface Fixture {
   faqId: string;
   categoryId: string;
   itemId: string;
+  /** Опубликованная подборка с блюдом itemId и одним чанком. */
+  documentId: string;
 }
+
+/** Вектор размерности схемы (768). Значение неважно: тест проверяет доступ, а не поиск. */
+const FAKE_EMBEDDING = Array.from({ length: 768 }, () => 0.01);
 
 describe.skipIf(!enabled)("RLS: справочники и закрытые таблицы", () => {
   let service: SupabaseClient;
@@ -137,7 +145,31 @@ describe.skipIf(!enabled)("RLS: справочники и закрытые та�
         .single(),
       "guest request",
     );
-    return { restaurantId: rid, faqId: faq.id, categoryId: category.id, itemId: item.id };
+    const document = must(
+      await service
+        .from("knowledge_documents")
+        .insert({ restaurant_id: rid, title: "d", body: "b", type: "collection", is_published: true })
+        .select("id")
+        .single(),
+      "knowledge document",
+    );
+    must(
+      await service
+        .from("knowledge_document_dishes")
+        .insert({ document_id: document.id, menu_item_id: item.id, restaurant_id: rid })
+        .select("document_id")
+        .single(),
+      "knowledge document dish",
+    );
+    must(
+      await service
+        .from("knowledge_chunks")
+        .insert({ restaurant_id: rid, document_id: document.id, chunk_index: 0, content: "d. b", embedding: FAKE_EMBEDDING })
+        .select("id")
+        .single(),
+      "knowledge chunk",
+    );
+    return { restaurantId: rid, faqId: faq.id, categoryId: category.id, itemId: item.id, documentId: document.id };
   }
 
   beforeAll(async () => {
@@ -428,6 +460,249 @@ describe.skipIf(!enabled)("RLS: справочники и закрытые та�
       const db = must(await managerA.rpc("eu_allergen_codes"), "eu_allergen_codes");
       expect(db).toEqual([...EU_ALLERGEN_CODES]);
       expect([...BOT_ALLERGEN_CODES]).toEqual([...EU_ALLERGEN_CODES]);
+    });
+  });
+
+  describe("база знаний (S10)", () => {
+    /** Служебные поля индексации, как их видит БД (service role). */
+    async function indexFields(table: "knowledge_documents" | "menu_items", id: string) {
+      return must(
+        await service
+          .from(table)
+          .select("index_status, index_revision, indexed_revision, index_attempt, index_error, indexed_at")
+          .eq("id", id)
+          .single(),
+        `index fields ${table}`,
+      );
+    }
+
+    async function chunkCount(documentId: string): Promise<number> {
+      const { count } = await service.from("knowledge_chunks").select("id", { count: "exact", head: true }).eq("document_id", documentId);
+      return count ?? 0;
+    }
+
+    async function linkedItems(documentId: string): Promise<string[]> {
+      const { data } = await service
+        .from("knowledge_document_dishes")
+        .select("menu_item_id")
+        .eq("document_id", documentId)
+        .order("sort_order");
+      return (data ?? []).map((r) => r.menu_item_id as string);
+    }
+
+    /** Документ ресторана A для теста, который его портит; удаляется вместе с рестораном. */
+    async function ownDocument(overrides: Record<string, unknown> = {}): Promise<string> {
+      const doc = must(
+        await service
+          .from("knowledge_documents")
+          .insert({ restaurant_id: A.restaurantId, title: "t", body: "b", type: "collection", is_published: true, ...overrides })
+          .select("id")
+          .single(),
+        "own document",
+      );
+      return doc.id;
+    }
+
+    it("менеджер видит документы и блюда подборок только своего ресторана, чанки — ничьи", async () => {
+      const docs = must(await managerA.from("knowledge_documents").select("id, restaurant_id"), "documents");
+      expect(docs.length).toBeGreaterThan(0);
+      expect(docs.every((d) => d.restaurant_id === A.restaurantId)).toBe(true);
+      const links = must(await managerA.from("knowledge_document_dishes").select("restaurant_id"), "links");
+      expect(links.length).toBeGreaterThan(0);
+      expect(links.every((l) => l.restaurant_id === A.restaurantId)).toBe(true);
+      // Чанк у A есть (создан в фикстуре), но менеджеру таблица закрыта целиком.
+      expect(await chunkCount(A.documentId)).toBe(1);
+      expect(await visibleRows(managerA, "knowledge_chunks")).toBe(0);
+    });
+
+    it("менеджер не пишет и не удаляет чанки напрямую", async () => {
+      const inserted = await managerA.from("knowledge_chunks").insert({
+        restaurant_id: A.restaurantId,
+        document_id: A.documentId,
+        chunk_index: 1,
+        content: "x",
+        embedding: FAKE_EMBEDDING,
+      });
+      expect(inserted.error).not.toBeNull();
+      await managerA.from("knowledge_chunks").delete().eq("document_id", A.documentId);
+      expect(await chunkCount(A.documentId)).toBe(1);
+    });
+
+    it("чужой ресторан: документы не меняются и не удаляются, в чужой ресторан не создать", async () => {
+      await managerA.from("knowledge_documents").update({ title: "hacked" }).eq("id", B.documentId);
+      await managerA.from("knowledge_documents").delete().eq("id", B.documentId);
+      const doc = must(await service.from("knowledge_documents").select("title").eq("id", B.documentId).single(), "B doc");
+      expect(doc.title).toBe("d");
+      const foreign = await managerA
+        .from("knowledge_documents")
+        .insert({ restaurant_id: B.restaurantId, title: "x", body: "x", type: "other" });
+      expect(foreign.error).not.toBeNull();
+    });
+
+    it("чужое блюдо нельзя привязать к своей подборке ни напрямую, ни через RPC", async () => {
+      // restaurant_id = A: составной FK не находит блюдо B в ресторане A.
+      const asOwn = await managerA
+        .from("knowledge_document_dishes")
+        .insert({ document_id: A.documentId, menu_item_id: B.itemId, restaurant_id: A.restaurantId });
+      expect(asOwn.error).not.toBeNull();
+      // restaurant_id = B: не проходит with check политики.
+      const asForeign = await managerA
+        .from("knowledge_document_dishes")
+        .insert({ document_id: A.documentId, menu_item_id: B.itemId, restaurant_id: B.restaurantId });
+      expect(asForeign.error).not.toBeNull();
+      const viaRpc = await managerA.rpc("save_knowledge_document", {
+        p_id: A.documentId,
+        p_title: "d",
+        p_body: "b",
+        p_type: "collection",
+        p_is_published: true,
+        p_dish_ids: [B.itemId],
+      });
+      expect(viaRpc.error?.message).toBe("invalid_dishes");
+      expect(await linkedItems(A.documentId)).toEqual([A.itemId]);
+    });
+
+    it("служебные поля индексации менеджер не подменяет: ни при создании, ни прямым update", async () => {
+      const created = must(
+        await managerA
+          .from("knowledge_documents")
+          .insert({
+            restaurant_id: A.restaurantId,
+            title: "t",
+            body: "b",
+            type: "other",
+            index_status: "ready",
+            index_revision: 50,
+            indexed_revision: 50,
+          })
+          .select("id")
+          .single(),
+        "manager insert",
+      );
+      expect(await indexFields("knowledge_documents", created.id)).toMatchObject({
+        index_status: "pending",
+        index_revision: 1,
+        indexed_revision: null,
+      });
+
+      const before = await indexFields("menu_items", A.itemId);
+      await managerA
+        .from("menu_items")
+        .update({ index_status: "ready", indexed_revision: before.index_revision, index_attempt: crypto.randomUUID() })
+        .eq("id", A.itemId);
+      expect(await indexFields("menu_items", A.itemId)).toEqual(before);
+    });
+
+    it("правка содержимого — новая версия и «ожидает»; цена и стоп-лист версию не меняют", async () => {
+      // Имитация успешной индексации: service role (как будущий индексатор) выставляет ready.
+      const docId = await ownDocument();
+      must(
+        await service
+          .from("knowledge_documents")
+          .update({ index_status: "ready", indexed_revision: 1, indexed_at: new Date().toISOString() })
+          .eq("id", docId)
+          .select("id")
+          .single(),
+        "mark ready",
+      );
+      await managerA.from("knowledge_documents").update({ body: "новый текст" }).eq("id", docId);
+      expect(await indexFields("knowledge_documents", docId)).toMatchObject({
+        index_status: "pending",
+        index_revision: 2,
+        indexed_revision: 1, // последняя успешная индексация остаётся — по ней видно, что индекс устарел
+      });
+
+      const item = await indexFields("menu_items", A.itemId);
+      await managerA.from("menu_items").update({ price: 99, is_available: false, allergens: ["fish"] }).eq("id", A.itemId);
+      expect((await indexFields("menu_items", A.itemId)).index_revision).toBe(item.index_revision);
+      await managerA.from("menu_items").update({ description: "новое описание" }).eq("id", A.itemId);
+      expect((await indexFields("menu_items", A.itemId)).index_revision).toBe(item.index_revision + 1);
+    });
+
+    it("переименование категории инвалидирует её блюда", async () => {
+      must(
+        await service.from("menu_items").update({ category_id: A.categoryId }).eq("id", A.itemId).select("id").single(),
+        "item to category",
+      );
+      const before = await indexFields("menu_items", A.itemId);
+      await managerA.from("menu_categories").update({ name: `c-${runId}` }).eq("id", A.categoryId);
+      expect(await indexFields("menu_items", A.itemId)).toMatchObject({
+        index_status: "pending",
+        index_revision: before.index_revision + 1,
+      });
+    });
+
+    it("снятие с публикации сразу удаляет чанки; смена типа с подборки удаляет связи", async () => {
+      const docId = await ownDocument();
+      must(
+        await service
+          .from("knowledge_chunks")
+          .insert({ restaurant_id: A.restaurantId, document_id: docId, chunk_index: 0, content: "t. b", embedding: FAKE_EMBEDDING })
+          .select("id")
+          .single(),
+        "chunk",
+      );
+      must(
+        await service
+          .from("knowledge_document_dishes")
+          .insert({ document_id: docId, menu_item_id: A.itemId, restaurant_id: A.restaurantId })
+          .select("document_id")
+          .single(),
+        "link",
+      );
+      await managerA.from("knowledge_documents").update({ is_published: false }).eq("id", docId);
+      expect(await chunkCount(docId)).toBe(0);
+      await managerA.from("knowledge_documents").update({ type: "drinks" }).eq("id", docId);
+      expect(await linkedItems(docId)).toEqual([]);
+      // Связь у не-подборки не создать даже напрямую.
+      const link = await managerA
+        .from("knowledge_document_dishes")
+        .insert({ document_id: docId, menu_item_id: A.itemId, restaurant_id: A.restaurantId });
+      expect(link.error).not.toBeNull();
+    });
+
+    it("RPC сохраняет документ и состав подборки вместе, порядок блюд — порядок массива", async () => {
+      const second = must(
+        await service.from("menu_items").insert({ restaurant_id: A.restaurantId, name: "i2", price: 2 }).select("id").single(),
+        "second item",
+      );
+      const id = must(
+        await managerA.rpc("save_knowledge_document", {
+          p_id: null,
+          p_title: "  Подборка  ",
+          p_body: "тема",
+          p_type: "collection",
+          p_is_published: true,
+          p_dish_ids: [second.id, A.itemId],
+        }),
+        "rpc create",
+      ) as string;
+      const doc = must(await service.from("knowledge_documents").select("title, restaurant_id").eq("id", id).single(), "created");
+      expect(doc).toEqual({ title: "Подборка", restaurant_id: A.restaurantId });
+      expect(await linkedItems(id)).toEqual([second.id, A.itemId]);
+
+      // Ошибка — откат целиком: документ не меняется, связи прежние.
+      const bad = await managerA.rpc("save_knowledge_document", {
+        p_id: id,
+        p_title: "Другое",
+        p_body: "тема",
+        p_type: "other",
+        p_is_published: true,
+        p_dish_ids: [A.itemId],
+      });
+      expect(bad.error?.message).toBe("dishes_only_for_collection");
+      expect((await service.from("knowledge_documents").select("title").eq("id", id).single()).data?.title).toBe("Подборка");
+      expect(await linkedItems(id)).toEqual([second.id, A.itemId]);
+    });
+
+    it("RPC: чужой документ не найден; посторонний и аноним не сохраняют", async () => {
+      const args = { p_title: "x", p_body: "x", p_type: "other", p_is_published: false, p_dish_ids: [] };
+      const foreign = await managerA.rpc("save_knowledge_document", { p_id: B.documentId, ...args });
+      expect(foreign.error?.message).toBe("not_found");
+      const byOutsider = await outsider.rpc("save_knowledge_document", { p_id: null, ...args });
+      expect(byOutsider.error?.message).toBe("not_found");
+      const byAnon = await anon.rpc("save_knowledge_document", { p_id: null, ...args });
+      expect(byAnon.error).not.toBeNull();
     });
   });
 });

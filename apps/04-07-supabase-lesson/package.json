@@ -10,14 +10,15 @@
     "functions:deploy": "supabase functions deploy",
     "db:push": "echo 'Миграции в удалённый проект катит только CI: ветка → PR (integration проверяет на чистой БД) → main (deploy). Локально: pnpm start && pnpm db:reset. docs/guides/ci-cd/05-deploy-and-rollback.md' >&2 && exit 1",
     "db:reset": "supabase db reset",
-    "db:seed:remote": "supabase db query --linked -f supabase/seed.sql",
+    "db:seed:remote": "supabase db query --linked -f supabase/seed.sql && supabase db query --linked -f supabase/seed-knowledge.sql",
     "db:seed:chat-demo": "supabase db query --linked -f supabase/dev-chat-seed.sql",
     "db:clean:chat-demo": "supabase db query --linked \"delete from conversations where channel = 'telegram' and external_user_id = -1001\"",
     "db:check:retention": "supabase db query --linked -f supabase/dev-retention-check.sql",
     "link": "supabase link",
     "check:layers": "bash scripts/check-layers.sh",
     "eval:ai": "deno run --allow-env --allow-net --allow-read --env-file=.env --config supabase/functions/deno.json supabase/scripts/eval-ai-phrases.ts",
-    "eval:rag": "deno run --allow-env --allow-net --allow-read --env-file=.env supabase/scripts/rag-eval/eval-rag-search.ts"
+    "eval:rag": "deno run --allow-env --allow-net --allow-read --env-file=.env supabase/scripts/rag-eval/eval-rag-search.ts",
+    "seed:gen": "deno run --allow-read --allow-write supabase/scripts/rag-eval/generate-seed.ts"
   },
   "type": "commonjs",
   "devDependencies": {
