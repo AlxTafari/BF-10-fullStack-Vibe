@@ -147,7 +147,7 @@ knowledgeTest("блюдо: один фрагмент без аллергенов
       name: "Мусака",
       description: "Запеканка из баклажанов",
       ingredients: "баклажан, фарш, бешамель",
-      allergens: ["milk", "gluten"],
+      allergens: ["milk", "cereals_gluten"],
       price: 650,
       is_published: true,
     },
