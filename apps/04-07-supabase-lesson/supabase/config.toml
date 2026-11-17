@@ -409,6 +409,12 @@ verify_jwt = true
 # Локальный deno check и CI её не ловят — они читают общий deno.json сами.
 import_map = "./functions/deno.json"
 
+# knowledge-index вызывает админка с JWT менеджера (S10): шлюз проверяет токен, доступ к источнику — RLS.
+[functions.knowledge-index]
+verify_jwt = true
+# Та же карта импортов, что у manager-chat (см. комментарий выше).
+import_map = "./functions/deno.json"
+
 [analytics]
 enabled = true
 port = 54327

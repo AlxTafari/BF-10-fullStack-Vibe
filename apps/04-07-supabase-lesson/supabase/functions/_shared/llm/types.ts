@@ -120,3 +120,23 @@ export interface LlmClient {
   /** Ошибки — те же LlmError, что у generate. */
   transcribe(request: LlmTranscribeRequest): Promise<LlmTranscription>;
 }
+
+// ---------------------------------------------------------------- эмбеддинги (S10)
+
+/**
+ * Для чего вектор. Gemini строит разные векторы для фрагмента базы и для вопроса гостя: так вопрос
+ * «что-нибудь лёгкое» ближе к тексту подборки, чем к другому вопросу про лёгкое.
+ */
+export type EmbedTaskType = "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY";
+
+export interface EmbedOptions {
+  /** Предел одного запроса к провайдеру (пачки до EMBED_BATCH_SIZE текстов). Сработал — LlmError("timeout"). */
+  timeoutMs: number;
+}
+
+/**
+ * Тексты → нормализованные векторы той же длины и в том же порядке. Ошибки — LlmError тех же классов,
+ * что у generate: некорректный ответ провайдера (не то число векторов, не та размерность, NaN) — bad_response.
+ * Функция, а не объект с методами: индексатору и поиску больше ничего не нужно, а фейк в тестах — одна стрелка.
+ */
+export type Embedder = (texts: string[], taskType: EmbedTaskType, options: EmbedOptions) => Promise<number[][]>;

@@ -1,13 +1,17 @@
 // Проверка векторного поиска S10 на мок-базе Лавраки: документы + блюда → фрагменты → эмбеддинги Gemini → косинус.
-// Без БД: всё в памяти, чтобы до появления таблиц проверить решения §4.1 (модель, 768), §4.4 (только вектор),
-// §4.6 (нарезка по структуре) и подобрать порог «не знаю» по вопросам без ответа.
+// Без БД: всё в памяти — проверка решений §4.1 (модель, 768), §4.4 (только вектор), §4.7 (нарезка по структуре)
+// и порога «не знаю» по вопросам без ответа.
 //
 // Запуск вручную, не в CI (настоящие вызовы Gemini, копейки за прогон):
 //   pnpm eval:rag            — все вопросы, по каждому топ-3
 //   pnpm eval:rag --fails    — печатать только промахи
 // Нужен в .env: GEMINI_API_KEY.
 //
-// Нарезка здесь — черновик: в S10 переедет в domain и будет импортироваться отсюда.
+// Нарезка и эмбеддинги — те же, что у индексатора (S10, сессия 2): domain/knowledgeChunks.ts и адаптер Gemini
+// из _shared/llm. Иначе результат eval ничего не говорит о боевом поиске.
+import { chunkDocument, dishEmbeddingText } from "../../functions/_shared/domain/knowledgeChunks.ts";
+import { EMBED_DIMENSIONS, EMBED_MODEL } from "../../functions/_shared/llm/embeddings.ts";
+import { createGeminiEmbedder } from "../../functions/_shared/llm/gemini.ts";
 
 interface Doc { id: string; type: string; title: string; body: string; dishes?: string[] }
 interface Dish {
@@ -16,11 +20,6 @@ interface Dish {
 }
 interface Question { q: string; kind: string; expect: string[] }
 interface Chunk { source: string; text: string }
-
-const MODEL = "gemini-embedding-001";
-const DIM = 768;
-const MAX_CHUNK_CHARS = 2400; // ≈ 600–800 токенов русского текста; ориентир §4.6, подстраивается
-const BATCH = 100; // предел batchEmbedContents
 
 const dir = new URL("./", import.meta.url);
 const readJson = async <T>(name: string): Promise<T> => JSON.parse(await Deno.readTextFile(new URL(name, dir)));
@@ -33,76 +32,25 @@ const onlyFails = Deno.args.includes("--fails");
 const key = Deno.env.get("GEMINI_API_KEY");
 if (!key) throw new Error("GEMINI_API_KEY не задан в .env");
 
-// ---------------------------------------------------------------- нарезка (§4.6, вариант 2)
-
-/**
- * Разделы по `## `; без заголовков — по абзацам. Мелкие соседние куски склеиваются до MAX_CHUNK_CHARS,
- * перекрытия нет. В каждый фрагмент — название документа, иначе «Только по пятницам, с 21:00» теряет тему.
- */
-export function chunkDocument(doc: Doc): string[] {
-  const hasHeadings = /^## /m.test(doc.body);
-  const parts = (hasHeadings ? doc.body.split(/^(?=## )/m) : doc.body.split(/\n\s*\n/))
-    .map((p) => p.replace(/^## /, "").trim())
-    .filter(Boolean);
-
-  const chunks: string[] = [];
-  let current = "";
-  for (const part of parts) {
-    if (current && current.length + part.length + 2 > MAX_CHUNK_CHARS) {
-      chunks.push(current);
-      current = part;
-    } else {
-      current = current ? `${current}\n\n${part}` : part;
-    }
-  }
-  if (current) chunks.push(current);
-  // Документ короткий — склейка вернёт его целиком одним фрагментом.
-  return chunks.map((c) => `${doc.title}. ${c}`);
-}
-
-/** Блюдо — один фрагмент. Аллергенов в тексте нет: вектор не понимает «без молока» (решение §2.А). */
-function dishText(d: Dish): string {
-  return [`${d.name}. ${d.category}.`, d.description, d.ingredients ? `Состав: ${d.ingredients}.` : null]
-    .filter(Boolean)
-    .join(" ");
-}
+// ---------------------------------------------------------------- фрагменты
 
 const chunks: Chunk[] = [
   ...documents.flatMap((doc) => chunkDocument(doc).map((text) => ({ source: `doc:${doc.id}`, text }))),
   // Неопубликованные не индексируются; стоп-лист индексируется (флаг отдаётся в момент поиска).
-  ...dishes.filter((d) => d.published).map((d) => ({ source: `dish:${d.id}`, text: dishText(d) })),
+  ...dishes.filter((d) => d.published).map((d) => ({
+    source: `dish:${d.id}`,
+    text: dishEmbeddingText({ name: d.name, categoryName: d.category, description: d.description, ingredients: d.ingredients }),
+  })),
 ];
 
 // ---------------------------------------------------------------- эмбеддинги
 
-const normalize = (v: number[]) => {
-  const n = Math.hypot(...v);
-  return v.map((x) => x / n);
-};
+// Адаптер сам нормализует векторы (урезанный вектор Gemini не нормализован) и делит тексты на пачки по 10.
+// Таймаут с запасом: прогон ручной, торопиться некуда.
+const embedder = createGeminiEmbedder(key);
+const embed = (texts: string[], taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY") =>
+  embedder(texts, taskType, { timeoutMs: 60_000 });
 const cosine = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * b[i], 0); // векторы нормализованы
-
-async function embed(texts: string[], taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY"): Promise<number[][]> {
-  const out: number[][] = [];
-  for (let i = 0; i < texts.length; i += BATCH) {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:batchEmbedContents`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": key! },
-      body: JSON.stringify({
-        requests: texts.slice(i, i + BATCH).map((text) => ({
-          model: `models/${MODEL}`,
-          content: { parts: [{ text }] },
-          taskType,
-          outputDimensionality: DIM,
-        })),
-      }),
-    });
-    if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
-    const json = await res.json() as { embeddings: { values: number[] }[] };
-    // Урезанный (< 3072) вектор Gemini не нормализован — без этого косинус через скалярное произведение врёт.
-    out.push(...json.embeddings.map((e) => normalize(e.values)));
-  }
-  return out;
-}
 
 const chunkVecs = await embed(chunks.map((c) => c.text), "RETRIEVAL_DOCUMENT");
 const questionVecs = await embed(questions.map((q) => q.q), "RETRIEVAL_QUERY");
@@ -152,7 +100,7 @@ questions.forEach((q, i) => {
 
 const docChunks = chunks.filter((c) => c.source.startsWith("doc:")).length;
 console.log(`\nИндекс: ${documents.length} документов → ${docChunks} фрагментов, ${chunks.length - docChunks} блюд; ` +
-  `${MODEL}, ${DIM}. ✓ — правильный на 1-м месте, ~ — в топ-3, ✗ — мимо, · — вопрос без ответа.`);
+  `${EMBED_MODEL}, ${EMBED_DIMENSIONS}. ✓ — правильный на 1-м месте, ~ — в топ-3, ✗ — мимо, · — вопрос без ответа.`);
 
 let n = 0, top1 = 0, top3 = 0;
 for (const [kind, s] of byKind) {
@@ -161,6 +109,8 @@ for (const [kind, s] of byKind) {
   console.log(`  ${kind.padEnd(10)} топ-1 ${s.top1}/${s.n}, топ-3 ${s.top3}/${s.n}`);
 }
 console.log(`  ВСЕГО      топ-1 ${top1}/${n}, топ-3 ${top3}/${n}`);
+// Критерий S10 (сессия 2): топ-3 не ниже 34/35 — исходный прогон на черновой нарезке дал 35/35.
+console.log(top3 >= n - 1 ? `  Критерий топ-3 ≥ ${n - 1}/${n}: пройден` : `  Критерий топ-3 ≥ ${n - 1}/${n}: НЕ пройден`);
 
 // Порог «не знаю»: где кончаются вопросы без ответа и начинаются вопросы с ответом.
 const fmt = (xs: number[]) => xs.length ? `${Math.min(...xs).toFixed(3)}–${Math.max(...xs).toFixed(3)}` : "—";

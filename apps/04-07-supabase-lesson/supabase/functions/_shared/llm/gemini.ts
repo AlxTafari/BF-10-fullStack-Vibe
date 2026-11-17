@@ -1,7 +1,9 @@
-// Обёртка над SDK Gemini (S09). Единственное место, где импортируется @google/genai (правило check:layers):
+// Обёртка над SDK Gemini (S09, эмбеддинги — S10). Единственное место, где импортируется @google/genai (правило check:layers):
 // наружу — только наши типы из types.ts. По образцу _shared/telegram/client.ts.
 import { ApiError, type Content, FunctionCallingConfigMode, GoogleGenAI, type Part } from "@google/genai";
+import { checkEmbeddings, EMBED_DIMENSIONS, EMBED_MODEL, inBatches } from "./embeddings.ts";
 import {
+  type Embedder,
   type LlmClient,
   LlmError,
   type LlmMessage,
@@ -101,6 +103,36 @@ export function createGeminiClient(apiKey: string, model: string): LlmClient {
       if (!parsed) throw new LlmError("bad_response", `bad transcription, finishReason=${response.candidates?.[0]?.finishReason}`);
       return { ...parsed, usage };
     },
+  };
+}
+
+/**
+ * Эмбеддинги (S10): тексты → векторы для базы знаний. Модель и размерность — константы (embeddings.ts),
+ * от GEMINI_MODEL не зависят: генерация ответа и векторы меняются независимо.
+ * Пачки идут последовательно; таймаут — на каждый запрос, отмена только на нашей стороне.
+ */
+export function createGeminiEmbedder(apiKey: string): Embedder {
+  // Повторы SDK выключены, как у генерации: иначе один сбой съел бы бюджет порции индексации или хода агента.
+  const ai = new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts: 1 } } });
+
+  return async (texts, taskType, { timeoutMs }) => {
+    const vectors: number[][] = [];
+    for (const batch of inBatches(texts)) {
+      const signal = AbortSignal.timeout(timeoutMs);
+      let response;
+      try {
+        response = await ai.models.embedContent({
+          model: EMBED_MODEL,
+          // Массив строк — по вектору на строку, в том же порядке.
+          contents: batch,
+          config: { taskType, outputDimensionality: EMBED_DIMENSIONS, abortSignal: signal },
+        });
+      } catch (error) {
+        throw toLlmError(error, signal);
+      }
+      vectors.push(...checkEmbeddings(response.embeddings?.map((e) => e.values), batch.length));
+    }
+    return vectors;
   };
 }
 

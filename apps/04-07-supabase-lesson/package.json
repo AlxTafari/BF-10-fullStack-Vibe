@@ -17,7 +17,8 @@
     "link": "supabase link",
     "check:layers": "bash scripts/check-layers.sh",
     "eval:ai": "deno run --allow-env --allow-net --allow-read --env-file=.env --config supabase/functions/deno.json supabase/scripts/eval-ai-phrases.ts",
-    "eval:rag": "deno run --allow-env --allow-net --allow-read --env-file=.env supabase/scripts/rag-eval/eval-rag-search.ts",
+    "eval:rag": "deno run --allow-env --allow-net --allow-read --env-file=.env --config supabase/functions/deno.json supabase/scripts/rag-eval/eval-rag-search.ts",
+    "index:seed": "deno run --allow-env --allow-net --allow-read --env-file=.env --config supabase/functions/deno.json supabase/scripts/index-seed.ts",
     "seed:gen": "deno run --allow-read --allow-write supabase/scripts/rag-eval/generate-seed.ts"
   },
   "type": "commonjs",

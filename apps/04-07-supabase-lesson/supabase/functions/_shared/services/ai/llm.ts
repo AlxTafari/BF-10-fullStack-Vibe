@@ -1,7 +1,7 @@
 // Клиент модели из секретов Supabase (S09). Живёт в services, а не в обработчике: обработчики не импортируют
 // llm/ (ADR-008, check:layers) — index.ts берёт готового клиента отсюда, как берёт клиента Telegram.
-import { createGeminiClient } from "../../llm/gemini.ts";
-import type { LlmClient } from "../../llm/types.ts";
+import { createGeminiClient, createGeminiEmbedder } from "../../llm/gemini.ts";
+import type { Embedder, LlmClient } from "../../llm/types.ts";
 
 /**
  * GEMINI_API_KEY и GEMINI_MODEL — секреты (`supabase secrets set`), модель меняется без деплоя кода.
@@ -15,4 +15,17 @@ export function createLlmFromEnv(): LlmClient | null {
     return null;
   }
   return createGeminiClient(apiKey, model);
+}
+
+/**
+ * Эмбеддинги базы знаний (S10). Нужен только GEMINI_API_KEY: модель эмбеддингов — константа в коде
+ * (llm/embeddings.ts), её смена — миграция, а не секрет. Ключа нет — null: индексация отвечает ошибкой конфигурации.
+ */
+export function createEmbedderFromEnv(): Embedder | null {
+  const apiKey = Deno.env.get("GEMINI_API_KEY");
+  if (!apiKey) {
+    console.error("GEMINI_API_KEY не задан — эмбеддинги недоступны");
+    return null;
+  }
+  return createGeminiEmbedder(apiKey);
 }

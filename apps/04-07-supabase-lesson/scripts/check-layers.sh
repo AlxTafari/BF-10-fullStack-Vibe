@@ -40,6 +40,9 @@ check telegram-webhook 'repositories/' \
 # Edge Function менеджера (S06b) — тоже обработчик: данные только через services.
 check manager-chat 'repositories/|domain/' \
   'manager-chat обращается к данным и правилам только через services'
+# Edge Function индексации базы знаний (S10) — тоже обработчик.
+check knowledge-index 'repositories/|domain/|llm/' \
+  'knowledge-index обращается к данным, правилам и LLM только через services'
 # …и к LLM тоже (ADR-008): клиента модели создаёт services/ai. Исключение — тесты и testing/: сценарным
 # тестам нужен фейковый LLM из _shared/llm/fakeLlm.ts, как фейковый Telegram.
 llm_hits=$(grep -rnE "^(import|export) .*from .*llm/" telegram-webhook --include='*.ts' \
