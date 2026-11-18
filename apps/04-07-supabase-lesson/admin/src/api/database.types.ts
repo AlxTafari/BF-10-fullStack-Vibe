@@ -770,6 +770,10 @@ export type Database = {
           voice_transcribed: number
         }[]
       }
+      begin_knowledge_index: {
+        Args: { p_id: string; p_source: string }
+        Returns: Json
+      }
       begin_manager_handoff: {
         Args: { p_conversation_id: string }
         Returns: {
@@ -804,6 +808,26 @@ export type Database = {
           handoff_until: string
         }[]
       }
+      fail_knowledge_index: {
+        Args: {
+          p_attempt: string
+          p_error: string
+          p_id: string
+          p_revision: number
+          p_source: string
+        }
+        Returns: string
+      }
+      finish_knowledge_index: {
+        Args: {
+          p_attempt: string
+          p_chunks: Json
+          p_id: string
+          p_revision: number
+          p_source: string
+        }
+        Returns: string
+      }
       get_messages_page: {
         Args: {
           p_before_created_at: string
@@ -828,6 +852,15 @@ export type Database = {
         }
       }
       is_manager_of: { Args: { p_restaurant_id: string }; Returns: boolean }
+      knowledge_index_lock_current: {
+        Args: {
+          p_attempt: string
+          p_id: string
+          p_revision: number
+          p_source: string
+        }
+        Returns: string
+      }
       list_conversations_page: {
         Args: { p_before_at: string; p_before_id: string; p_limit: number }
         Returns: {
@@ -848,6 +881,28 @@ export type Database = {
       mark_conversation_read: {
         Args: { p_conversation_id: string; p_up_to: string }
         Returns: undefined
+      }
+      match_knowledge: {
+        Args: {
+          p_embedding: string
+          p_limit: number
+          p_restaurant_id: string
+          p_threshold: number
+        }
+        Returns: {
+          available: boolean
+          chunk_index: number
+          content: string
+          currency: string
+          dishes: Json
+          doc_type: string
+          id: string
+          name: string
+          price: number
+          score: number
+          source: string
+          title: string
+        }[]
       }
       purge_old_data: {
         Args: never

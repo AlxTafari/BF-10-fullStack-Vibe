@@ -98,6 +98,7 @@ function Shell({
     { to: "/chats", label: "Чаты", badge: unreadChats },
     { to: "/menu", label: "Меню", badge: 0 },
     { to: "/faq", label: "FAQ", badge: 0 },
+    { to: "/knowledge", label: "База знаний", badge: 0 },
     { to: "/restaurant", label: "Ресторан", badge: 0 },
     { to: "/ai-stats", label: "Статистика AI", badge: 0 },
   ] as const;

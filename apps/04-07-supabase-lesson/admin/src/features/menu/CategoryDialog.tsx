@@ -13,9 +13,11 @@ interface Props {
   /** null — новая категория, иначе переименование. */
   category: MenuCategory | null;
   onClose: () => void;
+  /** Название существующей категории действительно сменилось — её блюдам нужна переиндексация. */
+  onRenamed: (categoryId: string) => void;
 }
 
-export function CategoryDialog({ restaurantId, category, onClose }: Props) {
+export function CategoryDialog({ restaurantId, category, onClose, onRenamed }: Props) {
   const [create, creating] = useCreateCategoryMutation();
   const [rename, renaming] = useRenameCategoryMutation();
   const form = useForm<CategoryValues>({
@@ -31,6 +33,8 @@ export function CategoryDialog({ restaurantId, category, onClose }: Props) {
       return;
     }
     toast.success("Сохранено");
+    // Сравниваем с тем, что записала БД: «Салаты » → «Салаты» после trim — не переименование.
+    if (category && "data" in result && result.data.name !== category.name) onRenamed(category.id);
     onClose();
   }
 

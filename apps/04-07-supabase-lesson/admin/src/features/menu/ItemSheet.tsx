@@ -22,6 +22,7 @@ import {
   toDishPayload,
   toFormValues,
 } from "@/domain/dishSchema";
+import { IndexStatus } from "@/features/knowledge/IndexStatus";
 import { AllergenField } from "./AllergenField";
 
 interface Props {
@@ -33,6 +34,11 @@ interface Props {
   /** Категория, выбранная в списке: подставляется в новое блюдо. */
   defaultCategoryId: string;
   onClose: () => void;
+  /** Строка после сохранения: по ней родитель решает, вызывать ли индексатор. */
+  onSaved: (item: MenuItem) => void;
+  /** Родитель ждёт ответа индексатора по этому блюду. */
+  indexing: boolean;
+  onRetryIndex: (id: string) => void;
 }
 
 type NumberFieldName =
@@ -50,7 +56,17 @@ const NUMBER_FIELDS: { name: NumberFieldName; label: string }[] = [
   { name: "carbs_per_portion", label: "Углеводы, г" },
 ];
 
-export function ItemSheet({ restaurantId, categories, currency, item, defaultCategoryId, onClose }: Props) {
+export function ItemSheet({
+  restaurantId,
+  categories,
+  currency,
+  item,
+  defaultCategoryId,
+  onClose,
+  onSaved,
+  indexing,
+  onRetryIndex,
+}: Props) {
   const [create, creating] = useCreateMenuItemMutation();
   const [update, updating] = useUpdateMenuItemMutation();
   const form = useForm<DishFormValues>({
@@ -68,6 +84,7 @@ export function ItemSheet({ restaurantId, categories, currency, item, defaultCat
       return;
     }
     toast.success("Сохранено");
+    onSaved(result.data);
     onClose();
   }
 
@@ -78,6 +95,13 @@ export function ItemSheet({ restaurantId, categories, currency, item, defaultCat
           <SheetTitle>{item ? "Изменить блюдо" : "Новое блюдо"}</SheetTitle>
           <SheetDescription>Новое блюдо — черновик, пока вы не включите «Опубликовано».</SheetDescription>
         </SheetHeader>
+        {/* Индекс поиска AI-помощника: название, описание, состав и категория. Цена и стоп-лист — без переиндексации. */}
+        {item && (
+          <div className="flex items-center gap-2 px-4 text-sm">
+            <span className="text-muted-foreground">Поиск AI:</span>
+            <IndexStatus row={item} indexing={indexing} onRetry={() => onRetryIndex(item.id)} showError />
+          </div>
+        )}
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 px-4 pb-4" noValidate>
             <FormField

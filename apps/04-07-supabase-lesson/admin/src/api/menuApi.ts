@@ -43,12 +43,13 @@ export const menuApi = baseApi.injectEndpoints({
       invalidatesTags: ["MenuCategory"],
     }),
 
+    // Новое название входит в текст эмбеддинга блюд: триггер БД переводит их индекс в «ожидает» — перечитываем и блюда.
     renameCategory: build.mutation<MenuCategory, { id: string; values: CategoryValues }>({
       queryFn: async ({ id, values }) => {
         const { data, error } = await supabase.from("menu_categories").update(values).eq("id", id).select().single();
         return error ? { error: toApiError(error) } : { data };
       },
-      invalidatesTags: ["MenuCategory"],
+      invalidatesTags: ["MenuCategory", "MenuItem"],
     }),
 
     // Блюда категории в БД не удаляются (on delete set null): остаются «Без категории» — перечитываем и их.
@@ -138,10 +139,16 @@ export const menuApi = baseApi.injectEndpoints({
     }),
 
     // Стоп-лист должен переключаться мгновенно во время службы → оптимистично, при ошибке откат.
-    setItemFlag: build.mutation<null, { restaurantId: string; id: string; flag: ItemFlag; value: boolean }>({
+    // Возвращает строку после записи: по полям индексации экран решает, звать ли индексатор (публикация).
+    setItemFlag: build.mutation<MenuItem, { restaurantId: string; id: string; flag: ItemFlag; value: boolean }>({
       queryFn: async ({ id, flag, value }) => {
-        const { error } = await supabase.from("menu_items").update(flag === "is_published" ? { is_published: value } : { is_available: value }).eq("id", id);
-        return error ? { error: toApiError(error) } : { data: null };
+        const { data, error } = await supabase
+          .from("menu_items")
+          .update(flag === "is_published" ? { is_published: value } : { is_available: value })
+          .eq("id", id)
+          .select()
+          .single();
+        return error ? { error: toApiError(error) } : { data };
       },
       onQueryStarted: async ({ restaurantId, id, flag, value }, { dispatch, queryFulfilled }) => {
         const patch = dispatch(
@@ -151,7 +158,14 @@ export const menuApi = baseApi.injectEndpoints({
           }),
         );
         try {
-          await queryFulfilled;
+          const { data } = await queryFulfilled;
+          // Публикация меняет и поля индексации (триггер БД) — кладём в кэш строку целиком, как её вернула БД.
+          dispatch(
+            menuApi.util.updateQueryData("getMenuItems", restaurantId, (draft) => {
+              const row = draft.find((r) => r.id === id);
+              if (row) Object.assign(row, data);
+            }),
+          );
         } catch {
           patch.undo();
         }

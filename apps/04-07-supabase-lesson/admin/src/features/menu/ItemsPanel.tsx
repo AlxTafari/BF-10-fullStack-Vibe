@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BOT_CATEGORY_LIMIT, lacksNutrition } from "@/domain/dishSchema";
+import { indexState, needsIndex } from "@/domain/knowledge";
+import { useIndexSource } from "@/features/knowledge/useIndexSource";
 import { ItemSheet } from "./ItemSheet";
 
 interface Props {
@@ -29,6 +31,8 @@ interface Props {
   selectedId: string;
 }
 
+const SAVED_NOT_INDEXED = "Блюдо сохранено, индекс не обновлён";
+
 const formatPrice = (price: number, currency: string) =>
   `${price.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ${currency}`;
 
@@ -38,13 +42,29 @@ export function ItemsPanel({ restaurantId, currency, categories, items, title, s
   // undefined — форма закрыта, null — новое блюдо, блюдо — правка.
   const [sheet, setSheet] = useState<undefined | null | MenuItem>(undefined);
   const [toDelete, setToDelete] = useState<MenuItem | null>(null);
+  // Индексатор живёт здесь, а не в форме: форма закрывается сразу после сохранения, «Индексируется» видно в строке.
+  const { index, isIndexing } = useIndexSource();
+  // Форма показывает статус индекса из кэша списка (он перечитывается), а не снимок на момент открытия.
+  const sheetItem = sheet ? (items.find((i) => i.id === sheet.id) ?? sheet) : sheet;
 
   const publishedCount = items.filter((i) => i.is_published).length;
 
   async function handleFlag(item: MenuItem, flag: ItemFlag, value: boolean) {
     // Оптимистичное обновление и откат — внутри мутации; здесь только сообщение об ошибке.
     const result = await setFlag({ restaurantId, id: item.id, flag, value });
-    if (result.error) toast.error(`Не удалось изменить: ${result.error.message ?? "ошибка"}`);
+    if (result.error) {
+      toast.error(`Не удалось изменить: ${result.error.message ?? "ошибка"}`);
+      return;
+    }
+    // Публикация даёт новую версию индекса — эмбеддинг нужен. Стоп-лист версию не меняет: Gemini не зовём.
+    if (flag === "is_published" && needsIndex(result.data)) {
+      void index({ source: "dish", id: item.id }, SAVED_NOT_INDEXED);
+    }
+  }
+
+  /** После сохранения формы: индексатор — только если правка задела индексируемые поля (решает триггер БД). */
+  function handleSaved(saved: MenuItem) {
+    if (needsIndex(saved)) void index({ source: "dish", id: saved.id }, SAVED_NOT_INDEXED);
   }
 
   async function handleDelete() {
@@ -95,6 +115,15 @@ export function ItemsPanel({ restaurantId, currency, categories, items, title, s
                   <div className="mt-1 flex gap-1">
                     {!item.is_published && <Badge variant="outline">Черновик</Badge>}
                     {lacksNutrition(item) && <Badge variant="secondary">Нет КБЖУ</Badge>}
+                    {isIndexing(item.id) ? (
+                      <Badge variant="secondary">Индексируется…</Badge>
+                    ) : indexState(item) === "error" ? (
+                      <Badge variant="destructive" title={item.index_error ?? undefined}>
+                        Ошибка индекса
+                      </Badge>
+                    ) : (
+                      indexState(item) === "pending" && <Badge variant="outline">Ожидает индексации</Badge>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell>{formatPrice(item.price, currency)}</TableCell>
@@ -133,9 +162,12 @@ export function ItemsPanel({ restaurantId, currency, categories, items, title, s
           restaurantId={restaurantId}
           categories={categories}
           currency={currency}
-          item={sheet}
+          item={sheetItem ?? null}
           defaultCategoryId={selectedId}
           onClose={() => setSheet(undefined)}
+          onSaved={handleSaved}
+          indexing={sheetItem ? isIndexing(sheetItem.id) : false}
+          onRetryIndex={(id) => void index({ source: "dish", id }, "Индекс не обновлён")}
         />
       )}
 

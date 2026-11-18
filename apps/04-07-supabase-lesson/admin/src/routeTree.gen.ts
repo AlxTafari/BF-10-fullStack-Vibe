@@ -21,6 +21,8 @@ import { Route as AuthedRequestsRouteImport } from './routes/_authed/requests'
 import { Route as AuthedRestaurantRouteImport } from './routes/_authed/restaurant'
 import { Route as AuthedBookingsBookingIdRouteImport } from './routes/_authed/bookings.$bookingId'
 import { Route as AuthedChatsConversationIdRouteImport } from './routes/_authed/chats.$conversationId'
+import { Route as AuthedKnowledgeIndexRouteImport } from './routes/_authed/knowledge.index'
+import { Route as AuthedKnowledgeDocumentIdRouteImport } from './routes/_authed/knowledge.$documentId'
 import { Route as AuthedMenuCategoryIdRouteImport } from './routes/_authed/menu.$categoryId'
 import { Route as AuthedRequestsRequestIdRouteImport } from './routes/_authed/requests.$requestId'
 
@@ -84,6 +86,17 @@ const AuthedChatsConversationIdRoute =
     path: '/$conversationId',
     getParentRoute: () => AuthedChatsRoute,
   } as any)
+const AuthedKnowledgeIndexRoute = AuthedKnowledgeIndexRouteImport.update({
+  id: '/knowledge/',
+  path: '/knowledge/',
+  getParentRoute: () => AuthedRoute,
+} as any)
+const AuthedKnowledgeDocumentIdRoute =
+  AuthedKnowledgeDocumentIdRouteImport.update({
+    id: '/knowledge/$documentId',
+    path: '/knowledge/$documentId',
+    getParentRoute: () => AuthedRoute,
+  } as any)
 const AuthedMenuCategoryIdRoute = AuthedMenuCategoryIdRouteImport.update({
   id: '/$categoryId',
   path: '/$categoryId',
@@ -107,8 +120,10 @@ export interface FileRoutesByFullPath {
   '/restaurant': typeof AuthedRestaurantRoute
   '/bookings/$bookingId': typeof AuthedBookingsBookingIdRoute
   '/chats/$conversationId': typeof AuthedChatsConversationIdRoute
+  '/knowledge/$documentId': typeof AuthedKnowledgeDocumentIdRoute
   '/menu/$categoryId': typeof AuthedMenuCategoryIdRoute
   '/requests/$requestId': typeof AuthedRequestsRequestIdRoute
+  '/knowledge/': typeof AuthedKnowledgeIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -122,8 +137,10 @@ export interface FileRoutesByTo {
   '/restaurant': typeof AuthedRestaurantRoute
   '/bookings/$bookingId': typeof AuthedBookingsBookingIdRoute
   '/chats/$conversationId': typeof AuthedChatsConversationIdRoute
+  '/knowledge/$documentId': typeof AuthedKnowledgeDocumentIdRoute
   '/menu/$categoryId': typeof AuthedMenuCategoryIdRoute
   '/requests/$requestId': typeof AuthedRequestsRequestIdRoute
+  '/knowledge': typeof AuthedKnowledgeIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -139,8 +156,10 @@ export interface FileRoutesById {
   '/_authed/restaurant': typeof AuthedRestaurantRoute
   '/_authed/bookings/$bookingId': typeof AuthedBookingsBookingIdRoute
   '/_authed/chats/$conversationId': typeof AuthedChatsConversationIdRoute
+  '/_authed/knowledge/$documentId': typeof AuthedKnowledgeDocumentIdRoute
   '/_authed/menu/$categoryId': typeof AuthedMenuCategoryIdRoute
   '/_authed/requests/$requestId': typeof AuthedRequestsRequestIdRoute
+  '/_authed/knowledge/': typeof AuthedKnowledgeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -156,8 +175,10 @@ export interface FileRouteTypes {
     | '/restaurant'
     | '/bookings/$bookingId'
     | '/chats/$conversationId'
+    | '/knowledge/$documentId'
     | '/menu/$categoryId'
     | '/requests/$requestId'
+    | '/knowledge/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -171,8 +192,10 @@ export interface FileRouteTypes {
     | '/restaurant'
     | '/bookings/$bookingId'
     | '/chats/$conversationId'
+    | '/knowledge/$documentId'
     | '/menu/$categoryId'
     | '/requests/$requestId'
+    | '/knowledge'
   id:
     | '__root__'
     | '/'
@@ -187,8 +210,10 @@ export interface FileRouteTypes {
     | '/_authed/restaurant'
     | '/_authed/bookings/$bookingId'
     | '/_authed/chats/$conversationId'
+    | '/_authed/knowledge/$documentId'
     | '/_authed/menu/$categoryId'
     | '/_authed/requests/$requestId'
+    | '/_authed/knowledge/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -283,6 +308,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedChatsConversationIdRouteImport
       parentRoute: typeof AuthedChatsRoute
     }
+    '/_authed/knowledge/': {
+      id: '/_authed/knowledge/'
+      path: '/knowledge'
+      fullPath: '/knowledge/'
+      preLoaderRoute: typeof AuthedKnowledgeIndexRouteImport
+      parentRoute: typeof AuthedRoute
+    }
+    '/_authed/knowledge/$documentId': {
+      id: '/_authed/knowledge/$documentId'
+      path: '/knowledge/$documentId'
+      fullPath: '/knowledge/$documentId'
+      preLoaderRoute: typeof AuthedKnowledgeDocumentIdRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/menu/$categoryId': {
       id: '/_authed/menu/$categoryId'
       path: '/$categoryId'
@@ -356,6 +395,8 @@ interface AuthedRouteChildren {
   AuthedMenuRoute: typeof AuthedMenuRouteWithChildren
   AuthedRequestsRoute: typeof AuthedRequestsRouteWithChildren
   AuthedRestaurantRoute: typeof AuthedRestaurantRoute
+  AuthedKnowledgeDocumentIdRoute: typeof AuthedKnowledgeDocumentIdRoute
+  AuthedKnowledgeIndexRoute: typeof AuthedKnowledgeIndexRoute
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
@@ -366,6 +407,8 @@ const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedMenuRoute: AuthedMenuRouteWithChildren,
   AuthedRequestsRoute: AuthedRequestsRouteWithChildren,
   AuthedRestaurantRoute: AuthedRestaurantRoute,
+  AuthedKnowledgeDocumentIdRoute: AuthedKnowledgeDocumentIdRoute,
+  AuthedKnowledgeIndexRoute: AuthedKnowledgeIndexRoute,
 }
 
 const AuthedRouteWithChildren =

@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { NO_CATEGORY } from "@/domain/dishSchema";
 import { reorder } from "@/domain/reorder";
 import { SortableItem, SortableList } from "@/features/common/SortableList";
+import { useIndexSource } from "@/features/knowledge/useIndexSource";
 import { CategoryDialog } from "./CategoryDialog";
 
 interface Props {
@@ -49,6 +50,7 @@ export function CategoriesPanel({ restaurantId, categories, items, selectedId }:
   // undefined — диалог закрыт, null — создание, категория — переименование.
   const [dialog, setDialog] = useState<undefined | null | MenuCategory>(undefined);
   const [toDelete, setToDelete] = useState<MenuCategory | null>(null);
+  const { indexMany } = useIndexSource();
 
   const countIn = (categoryId: string | null) => items.filter((i) => i.category_id === categoryId).length;
 
@@ -59,8 +61,17 @@ export function CategoriesPanel({ restaurantId, categories, items, selectedId }:
     if (result.error) toast.error(`Не удалось сохранить порядок: ${result.error.message ?? "ошибка"}`);
   }
 
+  /**
+   * Название категории входит в текст эмбеддинга блюда: переименование и удаление (блюда станут «Без категории»)
+   * переводят индекс её блюд в «ожидает» (триггер БД). Переиндексируем опубликованные — неопубликованные не в поиске.
+   * Список берём до мутации: после удаления у блюд уже нет category_id.
+   */
+  const publishedIn = (categoryId: string) =>
+    items.filter((i) => i.category_id === categoryId && i.is_published).map((i) => ({ source: "dish" as const, id: i.id }));
+
   async function handleDelete() {
     if (!toDelete) return;
+    const affected = publishedIn(toDelete.id);
     const result = await deleteCategory(toDelete.id);
     if (result.error) {
       toast.error(`Не удалось удалить: ${result.error.message ?? "ошибка"}`);
@@ -68,6 +79,7 @@ export function CategoriesPanel({ restaurantId, categories, items, selectedId }:
     }
     toast.success("Категория удалена");
     setToDelete(null);
+    void indexMany(affected, "Категория удалена, индекс блюд не обновлён");
   }
 
   const deleteCount = toDelete ? countIn(toDelete.id) : 0;
@@ -123,7 +135,12 @@ export function CategoriesPanel({ restaurantId, categories, items, selectedId }:
       </ul>
 
       {dialog !== undefined && (
-        <CategoryDialog restaurantId={restaurantId} category={dialog} onClose={() => setDialog(undefined)} />
+        <CategoryDialog
+          restaurantId={restaurantId}
+          category={dialog}
+          onClose={() => setDialog(undefined)}
+          onRenamed={(id) => void indexMany(publishedIn(id), "Категория переименована, индекс блюд не обновлён")}
+        />
       )}
 
       <AlertDialog open={toDelete !== null} onOpenChange={(open) => !open && !deleting && setToDelete(null)}>
