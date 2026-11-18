@@ -1,4 +1,4 @@
-import { createLlmFromEnv } from "../_shared/services/ai/llm.ts";
+import { createEmbedderFromEnv, createLlmFromEnv } from "../_shared/services/ai/llm.ts";
 import { createServiceClient } from "../_shared/supabaseClient.ts";
 import { createTelegramClient } from "../_shared/telegram/client.ts";
 import type { TelegramUpdate } from "../_shared/telegram/types.ts";
@@ -19,7 +19,10 @@ Deno.serve(async (req: Request) => {
     const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
     if (!botToken) throw new Error("TELEGRAM_BOT_TOKEN не задан");
 
-    await routeUpdate({ client: createServiceClient(), tg: createTelegramClient(botToken), llm: createLlmFromEnv() }, update);
+    await routeUpdate(
+      { client: createServiceClient(), tg: createTelegramClient(botToken), llm: createLlmFromEnv(), embed: createEmbedderFromEnv() },
+      update,
+    );
   } catch (error) {
     console.error("telegram-webhook error:", error);
   }

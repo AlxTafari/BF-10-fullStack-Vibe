@@ -3,13 +3,16 @@
 // Без SUPABASE_URL тесты пропускаются (в CI их гоняет job integration). Каждый тест — свой диалог, удаляется в конце.
 import { assert, assertEquals } from "@std/assert";
 import { type AiSettings, DEFAULT_AI_SETTINGS } from "../../domain/aiSettings.ts";
+import { fakeEmbed } from "../../llm/fakeEmbed.ts";
 import { answer, call, createFakeLlm, type FakeLlmStep, say } from "../../llm/fakeLlm.ts";
-import type { LlmMessage, LlmRequest } from "../../llm/types.ts";
+import { type Embedder, LlmError, type LlmMessage, type LlmRequest } from "../../llm/types.ts";
 import { upsertConversation } from "../../repositories/conversationsRepo.ts";
 import { getRestaurant } from "../../repositories/restaurantsRepo.ts";
 import { createServiceClient } from "../../supabaseClient.ts";
 import type { ConversationRow } from "../../types.ts";
 import { recordMessage } from "../conversations.ts";
+import { indexDish, indexDocument } from "../knowledge.ts";
+import { SEARCH_TIMEOUT_MS } from "../knowledgeSearch.ts";
 import { MAX_TOOL_ROUNDS, runAgentTurn } from "./agent.ts";
 
 const enabled = !!Deno.env.get("SUPABASE_URL") && !!Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -17,7 +20,7 @@ const enabled = !!Deno.env.get("SUPABASE_URL") && !!Deno.env.get("SUPABASE_SERVI
 /** Пометка прошлого ответа агента для истории лимита: расход не важен, важно ai = true. */
 const PAST_AI_REPLY = { ai: true, model: "m", tools: [], calls: 1, inputTokens: 0, outputTokens: 0, thoughtTokens: 0, ms: 0 } as const;
 
-// Блюда seed.sql: «Креветки саганаки» в стоп-листе, «Рыба дня» не опубликована.
+// Блюда seed-knowledge.sql: «Креветки саганаки» в стоп-листе, «Рыба дня» не опубликована.
 const STOP_LIST_DISH = "Креветки саганаки";
 const HIDDEN_DISH = "Рыба дня";
 
@@ -47,9 +50,47 @@ function agentTest(name: string, fn: (ctx: { conversation: ConversationRow; say:
   });
 }
 
-const run = (conversation: ConversationRow, steps: FakeLlmStep[], settings: AiSettings = DEFAULT_AI_SETTINGS) => {
+/**
+ * Тест поиска по базе знаний (S10): свой ресторан и диалог в нём, удаляются в конце (каскад уносит документы,
+ * блюда, чанки и диалог). Поиск идёт по ресторану диалога — данные seed-ресторана в выдачу попасть не могут.
+ */
+function knowledgeAgentTest(
+  name: string,
+  fn: (ctx: { conversation: ConversationRow; restaurantId: string; say: (text: string) => Promise<void> }) => Promise<void>,
+) {
+  Deno.test({
+    name: `агент: ${name}`,
+    ignore: !enabled,
+    sanitizeOps: false,
+    sanitizeResources: false,
+    async fn() {
+      const client = createServiceClient();
+      const { data, error } = await client.from("restaurants")
+        .insert({ name: "agent-knowledge-test", currency: "EUR", timezone: "Europe/Athens" }).select("id").single();
+      if (error) throw error;
+      try {
+        const conversation = await upsertConversation(client, {
+          restaurantId: data.id,
+          externalUserId: -Math.floor(Math.random() * 1_000_000_000) - 1,
+          chatId: -1,
+          displayName: "agent-knowledge-test",
+        });
+        await fn({ conversation, restaurantId: data.id, say: (text) => recordMessage(client, conversation.id, "in", text) });
+      } finally {
+        await client.from("restaurants").delete().eq("id", data.id);
+      }
+    },
+  });
+}
+
+const run = (
+  conversation: ConversationRow,
+  steps: FakeLlmStep[],
+  settings: AiSettings = DEFAULT_AI_SETTINGS,
+  embed: Embedder | null = fakeEmbed,
+) => {
   const llm = createFakeLlm(steps);
-  return { llm, result: runAgentTurn({ client: createServiceClient(), llm }, { conversation, settings }) };
+  return { llm, result: runAgentTurn({ client: createServiceClient(), llm, embed }, { conversation, settings }) };
 };
 
 /** Результат tool из последнего сообщения role = tool в запросе. */
@@ -83,10 +124,13 @@ agentTest("ответ по данным tool, результат tool уходи
   // allergens = null — не «можно», а отдельная группа «не указано».
   assert(names(seen.notSpecified).includes("Скордалия"));
   assert(!names(seen.free).includes("Скордалия"), "блюдо без аллергенов попало в «можно»");
-  // Стоп-лист и неопубликованное не попадают ни в одну группу.
+  // Неопубликованное не попадает ни в одну группу; стоп-лист — попадает с флагом (S10 §4.3).
   const all = [...names(seen.free), ...names(seen.contains), ...names(seen.notSpecified)];
-  assert(!all.includes(STOP_LIST_DISH), "блюдо из стоп-листа ушло модели");
   assert(!all.includes(HIDDEN_DISH), "неопубликованное блюдо ушло модели");
+  const groups = [seen.free, seen.contains, seen.notSpecified] as { name: string; available: boolean }[][];
+  const shrimp = groups.flat().find((d) => d.name === STOP_LIST_DISH);
+  assertEquals(shrimp?.available, false);
+  assertEquals(groups.flat().find((d) => d.name === "Дорада на гриле")?.available, true);
 });
 
 agentTest("контекст: системный промпт, история без кнопок, последняя реплика гостя", async ({ conversation, say: guest }) => {
@@ -115,20 +159,45 @@ agentTest("окно истории: модель видит только пос�
   assertEquals(llm.requests[0].messages, [{ role: "user", text: "вопрос 3\nвопрос 4\nвопрос 5\nвопрос 6" }]);
 });
 
-agentTest("стоп-лист: карточка блюда для AI — как отсутствующее", async ({ conversation, say: guest }) => {
+agentTest("стоп-лист (S10): searchMenu и карточка отдают блюдо с available: false, а не прячут", async ({ conversation, say: guest }) => {
   const client = createServiceClient();
   const { data } = await client.from("menu_items").select("id").eq("name", STOP_LIST_DISH).single();
-  await guest("расскажи про креветки");
-  let seen: Record<string, unknown> = {};
+  await guest("есть креветки?");
+  let found: Record<string, unknown> = {};
+  let card: Record<string, unknown> = {};
   const { result } = run(conversation, [
-    call("getDishDetails", { dishId: data!.id }),
+    call("searchMenu", { query: "креветки" }),
     (request) => {
-      seen = lastToolResult(request);
-      return answer("Сейчас креветок нет.");
+      found = lastToolResult(request);
+      return call("getDishDetails", { dishId: data!.id });
+    },
+    (request) => {
+      card = lastToolResult(request);
+      return answer("Креветки саганаки сейчас закончились, уточните в ресторане.");
     },
   ]);
   await result;
-  assertEquals(seen, { error: "not_found" });
+  const dishes = found.dishes as { id: string; name: string; available: boolean }[];
+  assertEquals(dishes.find((d) => d.id === data!.id)?.available, false);
+  assertEquals(card.name, STOP_LIST_DISH);
+  assertEquals(card.available, false);
+  assert(!("is_available" in card), "внутреннее имя поля ушло модели");
+});
+
+agentTest("стоп-лист: неопубликованное блюдо по-прежнему не отдаётся", async ({ conversation, say: guest }) => {
+  const client = createServiceClient();
+  const { data } = await client.from("menu_items").select("id").eq("name", HIDDEN_DISH).single();
+  await guest("а рыба дня есть?");
+  let card: Record<string, unknown> = {};
+  const { result } = run(conversation, [
+    call("getDishDetails", { dishId: data!.id }),
+    (request) => {
+      card = lastToolResult(request);
+      return answer("Такого блюда нет.");
+    },
+  ]);
+  await result;
+  assertEquals(card, { error: "not_found" });
 });
 
 agentTest("кнопки: только из набора и только на доступное блюдо", async ({ conversation, say: guest }) => {
@@ -355,4 +424,120 @@ agentTest("flagThreat: пометка ставится один раз, перв
   ]).result;
   assertEquals(second, { flagged: true, alreadyFlagged: true });
   assertEquals((await flagOf())?.flag_reason, "Гость угрожает разгромить зал");
+});
+
+// ---------------------------------------------------------------- база знаний (S10, сессия 3)
+
+knowledgeAgentTest("searchKnowledge: поиск в ресторане диалога, документ и блюдо в стоп-листе уходят модели", async ({ conversation, restaurantId, say: guest }) => {
+  const client = createServiceClient();
+  const { data: doc, error } = await client.from("knowledge_documents").insert({
+    restaurant_id: restaurantId,
+    title: "Живая музыка",
+    body: "Живая музыка играет по пятницам с 21:00.",
+    type: "event",
+    is_published: true,
+  }).select("id").single();
+  if (error) throw error;
+  const { data: dish, error: dishError } = await client.from("menu_items")
+    .insert({ restaurant_id: restaurantId, name: "Креветки саганаки", price: 18, is_available: false }).select("id").single();
+  if (dishError) throw dishError;
+  assertEquals((await indexDocument({ client, embed: fakeEmbed }, doc.id)).status, "ready");
+  assertEquals((await indexDish({ client, embed: fakeEmbed }, dish.id)).status, "ready");
+
+  await guest("когда у вас живая музыка? и есть креветки саганаки?");
+  let music: Record<string, unknown> = {};
+  let shrimp: Record<string, unknown> = {};
+  const { result } = run(conversation, [
+    call("searchKnowledge", { query: "живая музыка" }),
+    (request) => {
+      music = lastToolResult(request);
+      return call("searchKnowledge", { query: "креветки саганаки" });
+    },
+    (request) => {
+      shrimp = lastToolResult(request);
+      return answer("Музыка по пятницам с 21:00. Креветки сейчас закончились, уточните в ресторане.");
+    },
+  ]);
+  const turn = await result;
+  assert(turn.kind === "reply");
+  assertEquals(turn.tools, ["searchKnowledge", "searchKnowledge"]);
+
+  const [first] = music.results as Record<string, unknown>[];
+  assertEquals(first, {
+    source: "document",
+    id: doc.id,
+    title: "Живая музыка",
+    type: "event",
+    text: "Живая музыка. Живая музыка играет по пятницам с 21:00.",
+    dishes: [],
+  });
+  const dishHit = (shrimp.results as Record<string, unknown>[]).find((r) => r.source === "dish");
+  assertEquals(dishHit, { source: "dish", id: dish.id, name: "Креветки саганаки", price: 18, currency: "EUR", available: false });
+});
+
+knowledgeAgentTest("searchKnowledge: ничего выше порога — пустой результат; пустой запрос — ошибка аргументов", async ({ conversation, restaurantId, say: guest }) => {
+  const client = createServiceClient();
+  const { data: doc, error } = await client.from("knowledge_documents").insert({
+    restaurant_id: restaurantId, title: "Оплата", body: "Принимаем наличные и карты.", type: "service", is_published: true,
+  }).select("id").single();
+  if (error) throw error;
+  await indexDocument({ client, embed: fakeEmbed }, doc.id);
+
+  await guest("у вас есть караоке?");
+  let empty: Record<string, unknown> = {};
+  let invalidQuery: Record<string, unknown> = {};
+  const { result } = run(conversation, [
+    call("searchKnowledge", { query: "   " }),
+    (request) => {
+      invalidQuery = lastToolResult(request);
+      return call("searchKnowledge", { query: "караоке" });
+    },
+    (request) => {
+      empty = lastToolResult(request);
+      return answer("Такой информации у меня нет. Могу передать вопрос менеджеру.", [{ kind: "manager" }]);
+    },
+  ]);
+  assertEquals((await result).kind, "reply");
+  assertEquals(invalidQuery.error, "invalid_arguments");
+  assertEquals(empty, { results: [] });
+});
+
+knowledgeAgentTest("searchKnowledge: сбой эмбеддинга или нет ключа — search_unavailable, ход продолжается", async ({ conversation, say: guest }) => {
+  await guest("расскажите историю ресторана");
+  const failing: Embedder = () => Promise.reject(new LlmError("unavailable", "fake"));
+  for (const embed of [failing, null]) {
+    let seen: Record<string, unknown> = {};
+    const { result } = run(conversation, [
+      call("searchKnowledge", { query: "история ресторана" }),
+      (request) => {
+        seen = lastToolResult(request);
+        return call("getRestaurantInfo");
+      },
+      answer("Расскажу, что знаю: ..."),
+    ], DEFAULT_AI_SETTINGS, embed);
+    const turn = await result;
+    assertEquals(seen, { error: "search_unavailable" });
+    assert(turn.kind === "reply");
+    assertEquals(turn.tools, ["searchKnowledge", "getRestaurantInfo"]);
+  }
+});
+
+knowledgeAgentTest("searchKnowledge: зависший поиск обрывается по бюджету, модель успевает ответить", async ({ conversation, say: guest }) => {
+  await guest("что-нибудь лёгкое");
+  // Провайдер не отвечает никогда и таймаут игнорирует: держать ход должен не он, а бюджет поиска.
+  const hanging: Embedder = () => new Promise(() => {});
+  let seen: Record<string, unknown> = {};
+  const started = Date.now();
+  const { result } = run(conversation, [
+    call("searchKnowledge", { query: "что-нибудь лёгкое" }),
+    (request) => {
+      seen = lastToolResult(request);
+      return answer("Посмотрите раздел меню с рыбой.", [{ kind: "menu" }]);
+    },
+  ], DEFAULT_AI_SETTINGS, hanging);
+  const turn = await result;
+  const elapsed = Date.now() - started;
+  assertEquals(seen, { error: "search_unavailable" });
+  assert(turn.kind === "reply", "ход должен закончиться ответом, а не запасным");
+  assert(elapsed >= SEARCH_TIMEOUT_MS - 100 && elapsed < SEARCH_TIMEOUT_MS + 3_000, `ход занял ${elapsed} мс`);
 });

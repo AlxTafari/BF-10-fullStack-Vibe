@@ -704,5 +704,23 @@ describe.skipIf(!enabled)("RLS: справочники и закрытые та�
       const byAnon = await anon.rpc("save_knowledge_document", { p_id: null, ...args });
       expect(byAnon.error).not.toBeNull();
     });
+
+    it("служебные RPC индексации и поиск match_knowledge закрыты для анонима и менеджера", async () => {
+      const embedding = Array.from({ length: 768 }, (_, i) => (i === 0 ? 1 : 0));
+      const attempt = { p_attempt: "00000000-0000-0000-0000-000000000000", p_revision: 1 };
+      // Даже свой документ и свой ресторан: вызывает только Edge Function / бот под service role.
+      const calls: [string, Record<string, unknown>][] = [
+        ["begin_knowledge_index", { p_source: "document", p_id: A.documentId }],
+        ["finish_knowledge_index", { p_source: "document", p_id: A.documentId, ...attempt, p_chunks: [] }],
+        ["fail_knowledge_index", { p_source: "document", p_id: A.documentId, ...attempt, p_error: "x" }],
+        ["match_knowledge", { p_restaurant_id: A.restaurantId, p_embedding: embedding, p_threshold: 0.6, p_limit: 5 }],
+      ];
+      for (const [fn, params] of calls) {
+        for (const [who, client] of [["anon", anon], ["managerA", managerA]] as const) {
+          const { error } = await client.rpc(fn, params);
+          expect(error, `${fn} от ${who}`).not.toBeNull();
+        }
+      }
+    });
   });
 });

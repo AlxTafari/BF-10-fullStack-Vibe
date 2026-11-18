@@ -14,7 +14,7 @@ import {
 import { isFlowCallback, parseBookingCallback, parseCallback, parseFlowCallback } from "../_shared/domain/callbackData.ts";
 import { countsTowardRateLimit, isTooLong, RATE_LIMIT_WINDOW_SECONDS } from "../_shared/domain/antispam.ts";
 import { isHandoffActive } from "../_shared/domain/managerChat.ts";
-import type { LlmClient } from "../_shared/services/ai/agent.ts";
+import type { Embedder, LlmClient } from "../_shared/services/ai/agent.ts";
 import { getAiSettings } from "../_shared/services/aiSettings.ts";
 import { checkGuestRate } from "../_shared/services/antispam.ts";
 import { openConversation } from "../_shared/services/conversations.ts";
@@ -48,6 +48,8 @@ interface Deps {
   tg: TelegramClient;
   /** Модель для агента (S09). null — Gemini не настроен: свободный текст идёт в поиск блюда, как до S09. */
   llm: LlmClient | null;
+  /** Эмбеддинги для поиска по базе знаний (S10). Не передан или null — searchKnowledge недоступен, остальное работает. */
+  embed?: Embedder | null;
 }
 
 export async function routeUpdate(deps: Deps, update: TelegramUpdate): Promise<void> {
@@ -90,6 +92,7 @@ async function buildContext(
     isPrivate: chatType === "private",
     callbackMessageId,
     llm: deps.llm,
+    embed: deps.embed ?? null,
   };
 }
 

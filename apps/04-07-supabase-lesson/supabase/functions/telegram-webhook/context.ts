@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { LlmClient } from "../_shared/services/ai/agent.ts";
+import type { Embedder, LlmClient } from "../_shared/services/ai/agent.ts";
 import type { GuestIdentity } from "../_shared/services/flow.ts";
 import type { TelegramClient } from "../_shared/telegram/client.ts";
 import type { ConversationRow } from "../_shared/types.ts";
@@ -19,6 +19,8 @@ export interface HandlerContext {
   callbackMessageId: number | null;
   /** Клиент модели для агента (S09); null — ключ или модель Gemini не заданы. Обработчики только передают его в services/ai. */
   llm: LlmClient | null;
+  /** Эмбеддинги для поиска по базе знаний (S10); null — нет ключа, агент отвечает без searchKnowledge. */
+  embed: Embedder | null;
 }
 
 /** Гость текущего апдейта для сервисов сценария. */

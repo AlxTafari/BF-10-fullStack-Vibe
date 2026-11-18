@@ -1,6 +1,7 @@
 // Генерирует supabase/seed-knowledge.sql (меню + база знаний Лавраки) из dishes.json и documents.json.
 // Мок-база — единственный источник: eval:rag и seed читают одни и те же данные и не расходятся.
 // Запуск: pnpm seed:gen (после правки JSON). Файл seed-knowledge.sql руками не править.
+import { RESTAURANT_ID, seedUuid } from "./seed-ids.ts";
 
 interface Dish {
   id: string;
@@ -27,7 +28,6 @@ interface Doc {
   dishes?: string[];
 }
 
-const RESTAURANT_ID = "00000000-0000-0000-0000-00000000a001";
 // Типы документов — как в check-ограничении knowledge_documents.type (миграция 20261117100000).
 const DOC_TYPES = new Set(["history", "team", "concept", "collection", "drinks", "event", "service", "season", "other"]);
 
@@ -37,9 +37,8 @@ const readJson = async <T>(name: string): Promise<T> => JSON.parse(await Deno.re
 const { categories, dishes } = await readJson<{ categories: string[]; dishes: Dish[] }>("dishes.json");
 const { documents } = await readJson<{ documents: Doc[] }>("documents.json");
 
-// Постоянные uuid по позиции: seed идемпотентный, а id в dev не меняются между перезаливами.
-// Префикс — вид сущности (b — категория, c — блюдо, d — документ), всё валидный hex.
-const uuid = (prefix: "b" | "c" | "d", n: number) => `00000000-0000-0000-0000-00000000${prefix}${String(n).padStart(3, "0")}`;
+// Постоянные uuid по позиции — seed-ids.ts (их же читает eval:rag --db).
+const uuid = seedUuid;
 
 const categoryIds = new Map(categories.map((name, i) => [name, uuid("b", i + 1)]));
 const dishIds = new Map(dishes.map((d, i) => [d.id, uuid("c", i + 1)]));

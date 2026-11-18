@@ -5,19 +5,22 @@
 // кнопкой гостя «Отправить» под карточкой; reply — финальный ответ, не данные.
 //
 // Аргументы приходят от модели, а значит, косвенно от гостя: проверяем каждый, как ввод пользователя.
-// Ответы tools — только гостевые данные; блюда в стоп-листе (is_available = false) агенту не отдаются вовсе
-// (приёмка §5 п.4: не появляются ни в одном ответе AI). Неопубликованные отсекает уже репозиторий.
+// Ответы tools — только гостевые данные. Блюдо в стоп-листе отдаётся с available: false во всех tools (S10 §4.3,
+// вместо правила S09 «стоп-лист = отсутствующее блюдо»): гость получает информацию о блюде и узнаёт, что сейчас
+// оно закончилось. Неопубликованные отсекает уже репозиторий.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { EU_ALLERGEN_CODES, isAllergenCode } from "../../domain/allergens.ts";
+import { KNOWLEDGE_QUERY_MAX_LENGTH } from "../../domain/knowledgeSearch.ts";
 import { SUGGESTION_KINDS } from "../../domain/aiSuggestions.ts";
 import { formatLocalDateTime } from "../../domain/zonedTime.ts";
-import type { LlmToolCall, LlmToolSchema } from "../../llm/types.ts";
+import type { Embedder, LlmToolCall, LlmToolSchema } from "../../llm/types.ts";
 import type { BookingDraftInput } from "../../domain/bookingDraft.ts";
 import { type AdvanceResult, type FlowState, GUEST_REQUEST_KINDS } from "../../domain/flowState.ts";
 import { isContactRequired } from "../../domain/guestRequestFlow.ts";
 import { FLAG_REASON_MAX_LENGTH, flagThreat } from "../conversations.ts";
 import { getFaqAnswer, listFaq } from "../faq.ts";
 import { draftBookingFromAgent, draftGuestRequestFromAgent, type GuestIdentity } from "../flow.ts";
+import { type KnowledgeMatch, searchKnowledge } from "../knowledgeSearch.ts";
 import { type DishSummary, filterMenuByAllergens, getDishDetails, listMenuCategories, searchMenu } from "../menu.ts";
 import { getMyBooking, listMyRequests } from "../myRequests.ts";
 import { getRestaurantInfo } from "../restaurantInfo.ts";
@@ -46,7 +49,13 @@ function inDraftQueue<T>(flow: FlowHolder, fn: () => Promise<T>): Promise<T> {
 export interface ToolContext {
   client: SupabaseClient;
   conversationId: string;
+  /** Ресторан диалога (conversation.restaurant_id): по нему ищет searchKnowledge — не от модели и не «первый в БД». */
+  restaurantId: string;
   now: Date;
+  /** Конец хода агента (epoch ms): searchKnowledge оставляет до него время на ответ модели. */
+  deadline: number;
+  /** Эмбеддинги для searchKnowledge; null — нет ключа, поиск отвечает search_unavailable. */
+  embed: Embedder | null;
   /** Гость Telegram: для кнопок «Использовать мой @username» / «Использовать Telegram» на шагах черновика. */
   guest: GuestIdentity;
   flow: FlowHolder;
@@ -96,9 +105,18 @@ function draftString(args: Record<string, unknown>, key: string): string | undef
 const guestSees = (ready: boolean) =>
   ready ? "summary card with a Send button: ask the guest to check it and press Send" : "buttons of the current step";
 
-/** Блюдо для модели: id нужен ей для getDishDetails и кнопки «Карточка блюда», гостю она его не показывает. */
-const dishForModel = (d: DishSummary) => ({ id: d.id, name: d.name, price: d.price, currency: d.currency });
-const availableOnly = (items: DishSummary[]) => items.filter((d) => d.isAvailable).map(dishForModel);
+/**
+ * Блюдо для модели: id нужен ей для getDishDetails и кнопки «Карточка блюда», гостю она его не показывает.
+ * available: false — блюдо в стоп-листе (сейчас закончилось), промпт говорит, как об этом сказать.
+ */
+const dishForModel = (d: DishSummary) => ({ id: d.id, name: d.name, price: d.price, currency: d.currency, available: d.isAvailable });
+const dishesForModel = (items: DishSummary[]) => items.map(dishForModel);
+
+/** Результат поиска по базе знаний для модели: текст документа и состав подборки или текущие поля блюда. */
+const knowledgeForModel = (m: KnowledgeMatch) =>
+  m.source === "document"
+    ? { source: "document", id: m.id, title: m.title, type: m.type, text: m.content, dishes: m.dishes }
+    : { source: "dish", id: m.id, name: m.name, price: m.price, currency: m.currency, available: m.available };
 
 const TOOLS: ToolDefinition[] = [
   {
@@ -153,8 +171,9 @@ const TOOLS: ToolDefinition[] = [
     schema: {
       name: "searchMenu",
       description:
-        "Dishes available now: by a word from the dish name (query, in the menu's language) and/or by category. " +
-        "For broad questions (\"what hot dishes do you have\") use categoryId from listMenuCategories.",
+        "Menu dishes by a word from the dish name (query, in the menu's language) and/or by category. " +
+        "For broad questions (\"what hot dishes do you have\") use categoryId from listMenuCategories. " +
+        "available: false = sold out right now (stop list).",
       parameters: {
         type: "object",
         properties: {
@@ -169,7 +188,7 @@ const TOOLS: ToolDefinition[] = [
       if (!query && !categoryId) return invalid("pass query or categoryId");
       const result = await searchMenu(ctx.client, { query, categoryId });
       if (!result.ok) return invalid("query is too short or empty");
-      return { dishes: availableOnly(result.items), hasMore: result.hasMore };
+      return { dishes: dishesForModel(result.items), hasMore: result.hasMore };
     },
   },
   {
@@ -177,7 +196,8 @@ const TOOLS: ToolDefinition[] = [
       name: "getDishDetails",
       description:
         "Full dish card: description, ingredients, allergens, portion, nutrition per portion. " +
-        'allergens: list of EU allergen codes; [] means the restaurant stated "no allergens"; null means NOT specified.',
+        'allergens: list of EU allergen codes; [] means the restaurant stated "no allergens"; null means NOT specified. ' +
+        "available: false = sold out right now (stop list).",
       parameters: {
         type: "object",
         properties: { dishId: { type: "string", description: "id from searchMenu or filterMenuByAllergens" } },
@@ -188,17 +208,17 @@ const TOOLS: ToolDefinition[] = [
       const dishId = idArg(args, "dishId");
       if (!dishId) return invalid("dishId must be an id from searchMenu");
       const dish = await getDishDetails(ctx.client, { dishId });
-      // Стоп-лист для AI — как отсутствующее блюдо (см. шапку файла).
-      if (!dish || !dish.card.is_available) return { error: "not_found" };
-      const { is_available: _available, ...card } = dish.card;
-      return { id: dishId, ...card, category: dish.categoryName };
+      if (!dish) return { error: "not_found" };
+      // Стоп-лист — флаг available, как в остальных tools (см. шапку файла).
+      const { is_available, ...card } = dish.card;
+      return { id: dishId, ...card, available: is_available, category: dish.categoryName };
     },
   },
   {
     schema: {
       name: "filterMenuByAllergens",
       description:
-        "Splits available dishes by the guest's allergens: free (allergens specified, none of the given), " +
+        "Splits menu dishes by the guest's allergens: free (allergens specified, none of the given), " +
         "contains (has at least one), notSpecified (allergens unknown: never call these safe). " +
         "Map the guest's words to codes: nuts = tree nuts, peanuts separately, cereals_gluten = gluten, milk = lactose/dairy.",
       parameters: {
@@ -221,11 +241,39 @@ const TOOLS: ToolDefinition[] = [
       const categoryId = idArg(args, "categoryId");
       const result = await filterMenuByAllergens(ctx.client, { allergens, categoryId });
       return {
-        free: availableOnly(result.free),
-        contains: availableOnly(result.contains),
-        notSpecified: availableOnly(result.unknown),
+        free: dishesForModel(result.free),
+        contains: dishesForModel(result.contains),
+        notSpecified: dishesForModel(result.unknown),
         truncated: result.truncated,
       };
+    },
+  },
+  {
+    schema: {
+      name: "searchKnowledge",
+      description:
+        "Search the restaurant's knowledge base by meaning: history, team, concept, dish collections and wishes " +
+        "(\"something light\", \"in tomato with cheese\"), drinks and wine pairing, events, service (banquets, payment, " +
+        "delivery), seasonal offers. Also finds dishes by description, not only by name. Results: documents " +
+        "(text; for a collection, dishes = its current dishes) and dishes. Empty results = nothing relevant found.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "what the guest is looking for, a short phrase in the guest's words" },
+        },
+        required: ["query"],
+      },
+    },
+    async run(ctx, args) {
+      const query = stringArg(args, "query", KNOWLEDGE_QUERY_MAX_LENGTH);
+      if (!query) return invalid(`query must be a non-empty phrase up to ${KNOWLEDGE_QUERY_MAX_LENGTH} characters`);
+      const found = await searchKnowledge(
+        { client: ctx.client, embed: ctx.embed },
+        { restaurantId: ctx.restaurantId, query, deadline: ctx.deadline },
+      );
+      // Причину (нет времени, таймаут, сбой) модели знать незачем: ответ один — отвечать остальными tools.
+      if (!found.ok) return { error: "search_unavailable" };
+      return { results: found.results.map(knowledgeForModel) };
     },
   },
   {

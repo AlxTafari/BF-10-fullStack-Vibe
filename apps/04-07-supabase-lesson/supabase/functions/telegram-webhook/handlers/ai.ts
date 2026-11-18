@@ -47,7 +47,7 @@ async function runTurn(ctx: HandlerContext, settings: AiSettings): Promise<Agent
   const stopTyping = startTyping(ctx);
   try {
     return await runAgentTurn(
-      { client: ctx.client, llm: ctx.llm },
+      { client: ctx.client, llm: ctx.llm, embed: ctx.embed },
       { conversation: ctx.conversation, settings, guest: guestOf(ctx) },
     );
   } finally {

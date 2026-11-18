@@ -6,7 +6,7 @@ import { buildHistory, buildSystemPrompt, clampReply } from "../../domain/aiProm
 import { parseSuggestions, type Suggestion } from "../../domain/aiSuggestions.ts";
 import type { AdvanceResult } from "../../domain/flowState.ts";
 import { localDayBoundsUtc } from "../../domain/zonedTime.ts";
-import { type LlmClient, LlmError, type LlmMessage } from "../../llm/types.ts";
+import { type Embedder, type LlmClient, LlmError, type LlmMessage } from "../../llm/types.ts";
 import { countAiReplies, listRecentMessages } from "../../repositories/messagesRepo.ts";
 import { getRestaurantById } from "../../repositories/restaurantsRepo.ts";
 import type { AiTurnUsage, ConversationRow, MessageKind } from "../../types.ts";
@@ -14,8 +14,8 @@ import { getFlowState, type GuestIdentity } from "../flow.ts";
 import { getDishDetails } from "../menu.ts";
 import { type FlowHolder, REPLY, runTool, TOOL_SCHEMAS } from "./tools.ts";
 
-// Обработчику нужен тип клиента для зависимостей, но импортировать llm/ ему нельзя (check:layers).
-export type { LlmClient };
+// Обработчику нужны типы клиентов для зависимостей, но импортировать llm/ ему нельзя (check:layers).
+export type { Embedder, LlmClient };
 
 /**
  * Сколько раундов tools с данными за ход. После них модели разрешён только reply: ход заканчивается ответом
@@ -60,6 +60,11 @@ export interface AgentDeps {
   client: SupabaseClient;
   /** null — ключ или модель Gemini не заданы: каждый ход сразу уходит в запасной ответ. */
   llm: LlmClient | null;
+  /**
+   * Эмбеддинги для tool searchKnowledge (S10). Нет (null или не передан) — поиск по базе знаний отвечает
+   * search_unavailable, остальные tools работают.
+   */
+  embed?: Embedder | null;
   now?: Date;
 }
 
@@ -127,7 +132,18 @@ export async function runAgentTurn(
       t.role === "guest" ? { role: "user", text: t.text } : { role: "model", text: t.text }
     );
     const system = buildSystemPrompt({ restaurantName: restaurant.name, timeZone: restaurant.timezone, now, flow: flow.state });
-    const toolCtx = { client: deps.client, conversationId: conversation.id, now, guest: input.guest ?? { username: null, firstName: null }, flow };
+    const toolCtx = {
+      client: deps.client,
+      conversationId: conversation.id,
+      // Ресторан — из диалога: поиск по базе знаний не должен зависеть от модели или «первого ресторана в БД».
+      restaurantId: conversation.restaurant_id,
+      now,
+      // Конец хода: searchKnowledge оставляет до него время на ответ модели (общий бюджет — TURN_TIMEOUT_MS).
+      deadline: startedAt + TURN_TIMEOUT_MS,
+      embed: deps.embed ?? null,
+      guest: input.guest ?? { username: null, firstName: null },
+      flow,
+    };
     // Какие tools с данными агент вызвал за ход (для журнала); reply — сам ответ, в список не идёт.
     const toolsUsed: string[] = [];
     const done = async (text: string, suggestions: Suggestion[]): Promise<AgentTurnResult> => ({
@@ -197,7 +213,10 @@ export async function runAgentTurn(
   }
 }
 
-/** Кнопка «Карточка блюда» — только на существующее, опубликованное и доступное блюдо (§4.17). */
+/**
+ * Кнопка «Карточка блюда» — только на существующее, опубликованное и доступное блюдо (§4.17). Блюдо в стоп-листе
+ * агент называет с пометкой «закончилось» (S10 §4.3), но кнопку на него не даём, даже если модель её выбрала.
+ */
 async function onlyPublishedDishes(client: SupabaseClient, suggestions: Suggestion[]): Promise<AgentSuggestion[]> {
   const checked = await Promise.all(suggestions.map(async (s): Promise<AgentSuggestion | null> => {
     if (s.kind !== "dish") return s;

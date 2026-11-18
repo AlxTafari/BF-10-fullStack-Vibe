@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// База знаний (S10): служебные RPC индексации (миграция knowledge_indexing) и список источников ресторана.
-// RPC индексации — только service role. Проверки «источник/ресторан свой» для менеджера — userClient (RLS).
+// База знаний (S10): служебные RPC индексации (миграция knowledge_indexing), список источников ресторана
+// и векторный поиск match_knowledge (сессия 3). RPC индексации и поиска — только service role.
+// Проверки «источник/ресторан свой» для менеджера — userClient (RLS).
 
 /** Источник индекса. Порядок обхода массовой индексации — как в KNOWLEDGE_SOURCES: сначала документы, потом блюда. */
 export type KnowledgeSource = "document" | "dish";
@@ -119,4 +120,83 @@ export async function restaurantVisible(userClient: SupabaseClient, restaurantId
   const { data, error } = await userClient.from("restaurants").select("id").eq("id", restaurantId).maybeSingle();
   if (error) throw new Error(`restaurants: ${error.message}`);
   return data !== null;
+}
+
+// ---------------------------------------------------------------- поиск (S10, сессия 3)
+
+/** Блюдо подборки с текущими полями из menu_items: состав подборки — связи, а не текст документа. */
+export interface MatchedCollectionDish {
+  id: string;
+  name: string;
+  price: number;
+  currency: string;
+  available: boolean;
+}
+
+/** Строка match_knowledge: источник с лучшим фрагментом. Поля документа или блюда заполнены по source. */
+export type KnowledgeMatch =
+  | {
+    source: "document";
+    id: string;
+    score: number;
+    title: string;
+    type: string;
+    content: string;
+    dishes: MatchedCollectionDish[];
+  }
+  | { source: "dish"; id: string; score: number; name: string; price: number; currency: string; available: boolean };
+
+interface MatchRow {
+  source: KnowledgeSource;
+  id: string;
+  score: number;
+  title: string | null;
+  doc_type: string | null;
+  content: string | null;
+  name: string | null;
+  price: number | string | null;
+  currency: string | null;
+  available: boolean | null;
+  dishes: { id: string; name: string; price: number | string; currency: string; available: boolean }[] | null;
+}
+
+/**
+ * Векторный поиск по базе знаний ресторана (RPC match_knowledge, только service role). Фильтры, лучший фрагмент
+ * на источник, порог и лимит — в SQL. signal прерывает HTTP-запрос: поиск не держит ход агента дольше бюджета.
+ * numeric из PostgREST может прийти строкой — приводим к числу здесь, выше по слоям цена всегда number.
+ */
+export async function matchKnowledge(
+  client: SupabaseClient,
+  input: { restaurantId: string; embedding: number[]; threshold: number; limit: number },
+  signal: AbortSignal,
+): Promise<KnowledgeMatch[]> {
+  const { data, error } = await client.rpc("match_knowledge", {
+    p_restaurant_id: input.restaurantId,
+    // Массив чисел — PostgREST передаёт его текстом '[…]', это входной формат pgvector.
+    p_embedding: input.embedding,
+    p_threshold: input.threshold,
+    p_limit: input.limit,
+  }).abortSignal(signal);
+  if (error) throw new Error(`match_knowledge: ${error.message}`);
+  return ((data ?? []) as MatchRow[]).map((row): KnowledgeMatch =>
+    row.source === "document"
+      ? {
+        source: "document",
+        id: row.id,
+        score: row.score,
+        title: row.title ?? "",
+        type: row.doc_type ?? "other",
+        content: row.content ?? "",
+        dishes: (row.dishes ?? []).map((d) => ({ ...d, price: Number(d.price) })),
+      }
+      : {
+        source: "dish",
+        id: row.id,
+        score: row.score,
+        name: row.name ?? "",
+        price: Number(row.price),
+        currency: row.currency ?? "",
+        available: row.available === true,
+      }
+  );
 }
