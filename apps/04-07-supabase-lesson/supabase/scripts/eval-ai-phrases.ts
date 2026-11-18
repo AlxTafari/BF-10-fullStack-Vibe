@@ -107,7 +107,7 @@ const CASES: Case[] = [
   { name: "знания: томаты с сыром", phrase: "хочется чего-то в томатах с сыром", anyOf: ["searchKnowledge"], textHas: /мидии/i },
   // Стоп-лист — флаг во всех tools: креветки саганаки называются, но «закончились».
   { name: "стоп-лист: креветки", phrase: "есть креветки?", anyOf: ["searchMenu", "searchKnowledge"], textHas: /закончил|нет в наличии|недоступ/i },
-  { name: "знания: без ответа", phrase: "у вас есть караоке?", textNot: /(^|[\s«"])да[,!. ]/i, action: "manager" },
+  { name: "знания: без ответа", phrase: "у вас есть караоке?", textNot: /(^|[\s«"])да[,!. ]|караоке у нас нет|нет караоке/i, action: "manager" },
   { name: "знания: близкий без ответа", phrase: "принимаете криптовалюту?", anyOf: ["searchKnowledge", "listFaq", "getFaqAnswer"], textNot: /(^|[\s«"])да[,!. ]|принимаем крипт/i },
   { name: "знания: рыбка подешевле", phrase: "посоветуйте рыбку подешевле", textNot: /рыбк[аую] для кота/i },
   { name: "знания: аллергия и подборка", phrase: "у меня аллергия на орехи, что из подборки «Лёгкое и рыбное» можно?", anyOf: ["filterMenuByAllergens", "getDishDetails"] },
