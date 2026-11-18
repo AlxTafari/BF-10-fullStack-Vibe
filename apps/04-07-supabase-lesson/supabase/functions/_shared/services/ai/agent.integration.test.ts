@@ -439,7 +439,7 @@ knowledgeAgentTest("searchKnowledge: поиск в ресторане диало
   }).select("id").single();
   if (error) throw error;
   const { data: dish, error: dishError } = await client.from("menu_items")
-    .insert({ restaurant_id: restaurantId, name: "Креветки саганаки", price: 18, is_available: false }).select("id").single();
+    .insert({ restaurant_id: restaurantId, name: "Креветки саганаки", price: 18, is_available: false, is_published: true }).select("id").single();
   if (dishError) throw dishError;
   assertEquals((await indexDocument({ client, embed: fakeEmbed }, doc.id)).status, "ready");
   assertEquals((await indexDish({ client, embed: fakeEmbed }, dish.id)).status, "ready");
